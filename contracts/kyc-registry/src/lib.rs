@@ -424,7 +424,7 @@ impl KycRegistry {
             );
         }
         env.events()
-            .publish((symbol_short!("batch_app"),), subjects_count as u32);
+            .publish((symbol_short!("batch_app"),), subjects_count);
     }
 
     pub fn reject(env: Env, verifier: Address, subject: Address) {
