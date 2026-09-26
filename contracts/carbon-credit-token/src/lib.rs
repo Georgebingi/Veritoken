@@ -90,8 +90,14 @@ const DAY_IN_LEDGERS: u32 = 17280;
 const BUMP: u32 = 365 * DAY_IN_LEDGERS;
 const THRESHOLD: u32 = BUMP - DAY_IN_LEDGERS;
 const MAX_PAGE_SIZE: u32 = 100;
-/// Maximum byte length for metadata string fields written into certificates.
-const MAX_FIELD_LEN: u32 = 128;
+/// Inclusive maximum byte length for metadata string fields written into
+/// certificates.  A field whose byte length is exactly 128 is accepted;
+/// a field of 129 or more bytes is rejected with `CarbonError::FieldTooLong`.
+///
+/// `soroban_sdk::String::len()` returns the number of content bytes (UTF-8),
+/// so `field.len() > MAX_FIELD_BYTES` is an exact byte-boundary check with
+/// no off-by-one risk.
+const MAX_FIELD_BYTES: u32 = 128;
 
 /// Returned by `verify_receipt`. Contains key fields plus a validity flag and serial number.
 #[contracttype]
@@ -127,11 +133,23 @@ impl CarbonCreditToken {
         }
     }
 
-    /// Enforce that a metadata string field is at most MAX_FIELD_LEN (128) bytes.
-    /// Panics with `CarbonError::FieldTooLong` if the limit is exceeded so the
-    /// caller receives a structured contract error rather than a generic trap.
+    /// Enforce that a metadata string field is at most `MAX_FIELD_BYTES` (128)
+    /// bytes in length.
+    ///
+    /// `soroban_sdk::String::len()` returns the raw byte count of the string
+    /// content.  The comparison `field.len() > MAX_FIELD_BYTES` therefore
+    /// enforces a strict byte-level ceiling: exactly 128 bytes is accepted,
+    /// 129 or more is rejected.  This prevents certificate generation from
+    /// overflowing and ensures `to_certificate_json` stays within its 1 024-byte
+    /// stack buffer.
+    ///
+    /// Returns `CarbonError::FieldTooLong` so callers receive a structured
+    /// contract error rather than a generic WASM trap.
     fn validate_metadata_field_length(env: &Env, field: &String) {
-        if field.len() > MAX_FIELD_LEN {
+        // MAX_FIELD_BYTES is the *inclusive* upper bound: len == 128 passes,
+        // len >= 129 fails.  Using `>` against the inclusive constant gives the
+        // correct boundary without an off-by-one.
+        if field.len() > MAX_FIELD_BYTES {
             panic_with_error!(env, CarbonError::FieldTooLong);
         }
     }
@@ -139,9 +157,34 @@ impl CarbonCreditToken {
     // ── Beneficiary index helpers ─────────────────────────────────────────────
 
     /// Append `global_idx` to the per-beneficiary receipt index for `beneficiary`.
+    ///
+    /// Before writing, the function scans the existing per-beneficiary entries to
+    /// ensure `global_idx` has not already been recorded.  A duplicate would make
+    /// the same retirement event appear twice in the beneficiary ledger, corrupting
+    /// `total_retired` accounting and the audit trail.  Duplicate calls are silently
+    /// ignored (idempotent) rather than panicking so callers do not need to
+    /// coordinate ordering.
     fn index_beneficiary_receipt(env: &Env, beneficiary: &Address, global_idx: u32) {
         let count_key = DataKey::BeneficiaryReceiptCount(beneficiary.clone());
         let count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
+
+        // Duplicate guard: scan existing per-beneficiary entries.  Receipt counts
+        // are bounded by the batch cap (≤ 10 per call) so the linear scan is safe.
+        for local_i in 0..count {
+            let existing: u32 = env
+                .storage()
+                .persistent()
+                .get(&DataKey::BeneficiaryReceiptIdx(
+                    beneficiary.clone(),
+                    local_i,
+                ))
+                .unwrap_or(u32::MAX);
+            if existing == global_idx {
+                // Already recorded — do not create a duplicate entry.
+                return;
+            }
+        }
+
         let idx_key = DataKey::BeneficiaryReceiptIdx(beneficiary.clone(), count);
         env.storage().persistent().set(&idx_key, &global_idx);
         env.storage()
@@ -326,6 +369,10 @@ impl CarbonCreditToken {
     /// Enforces a 128-byte cap on `beneficiary` and `reason` fields to prevent
     /// certificate generation from overflowing. Returns `Error::FieldTooLong`
     /// rather than panicking when the limit is exceeded.
+    ///
+    /// Returns `CarbonError::InvalidAmount` when `amount` is zero or negative —
+    /// a zero-credit retirement is meaningless and must not create accounting
+    /// noise in `total_retired` or the receipt index.
     pub fn retire(
         env: Env,
         retiree: Address,
@@ -335,6 +382,11 @@ impl CarbonCreditToken {
     ) -> RetirementReceipt {
         env.storage().instance().extend_ttl(THRESHOLD, BUMP);
         retiree.require_auth();
+
+        // Reject zero and negative amounts before any state mutation.
+        if amount <= 0 {
+            panic_with_error!(env, CarbonError::InvalidAmount);
+        }
 
         // Validate field lengths before any state mutation.
         Self::validate_metadata_field_length(&env, &beneficiary);

@@ -214,6 +214,13 @@ impl RwaToken {
         compliance_metadata: Option<ComplianceMetadata>,
         max_supply: i128,
     ) {
+        // Reject an empty asset_type immediately — an empty string slips past
+        // a naive length check and would persist as ambiguous contract state.
+        // This guard runs before the known-values check so the error is always
+        // InvalidAssetType regardless of how the caller produced the empty value.
+        if asset_type.is_empty() {
+            panic_with_error!(env, RwaError::InvalidAssetType);
+        }
         if asset_type != String::from_str(&env, "invoice")
             && asset_type != String::from_str(&env, "property")
             && asset_type != String::from_str(&env, "carbon_credit")

@@ -2881,3 +2881,86 @@ fn test_burn_entire_supply() {
         "holder must be deregistered after balance is drained to zero"
     );
 }
+
+// ── Regression tests for RwaToken::__constructor asset_type fix ───────────────
+
+/// An empty asset_type string must be rejected.
+///
+/// Before the fix, the empty-string guard was absent; the code fell through to
+/// the known-values comparison block which also rejected it, but without a
+/// documented, early-exit boundary check that makes the intent explicit and
+/// auditable.  This test pins the early-exit behavior.
+///
+/// Uses `#[should_panic]` — same convention as `test_invalid_asset_type` above.
+#[test]
+#[should_panic]
+fn test_constructor_rejects_empty_asset_type() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+
+    let kyc_id = env.register(KycRegistry, ());
+    let kyc = KycRegistryClient::new(&env, &kyc_id);
+    kyc.initialize(&admin);
+
+    let compliance_id = env.register(ComplianceEngine, ());
+    let compliance = ComplianceEngineClient::new(&env, &compliance_id);
+    compliance.initialize(&admin, &kyc_id, &0u64);
+
+    // Empty string is not a recognised asset category — must panic.
+    let _ = env.register(
+        RwaToken,
+        (
+            admin.clone(),
+            7u32,
+            String::from_str(&env, "Empty Type Token"),
+            String::from_str(&env, "ETT"),
+            String::from_str(&env, ""), // empty asset_type — triggers early guard
+            kyc_id.clone(),
+            compliance_id.clone(),
+            Option::<ComplianceMetadata>::None,
+            0i128,
+        ),
+    );
+}
+
+/// A known asset type immediately following an empty-string check still works.
+/// This test confirms the early-exit guard does not break the happy path.
+#[test]
+fn test_constructor_accepts_valid_asset_type_after_empty_guard() {
+    for asset_type in ["invoice", "property", "carbon_credit"] {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+
+        let kyc_id = env.register(KycRegistry, ());
+        let kyc = KycRegistryClient::new(&env, &kyc_id);
+        kyc.initialize(&admin);
+
+        let compliance_id = env.register(ComplianceEngine, ());
+        let compliance = ComplianceEngineClient::new(&env, &compliance_id);
+        compliance.initialize(&admin, &kyc_id, &0u64);
+
+        let token_id = env.register(
+            RwaToken,
+            (
+                admin.clone(),
+                7u32,
+                String::from_str(&env, "Valid Token"),
+                String::from_str(&env, "VLD"),
+                String::from_str(&env, asset_type),
+                kyc_id.clone(),
+                compliance_id.clone(),
+                Option::<ComplianceMetadata>::None,
+                0i128,
+            ),
+        );
+        let token = RwaTokenClient::new(&env, &token_id);
+        assert_eq!(
+            token.asset_type(),
+            String::from_str(&env, asset_type),
+            "asset_type '{}' must be accepted and stored correctly",
+            asset_type
+        );
+    }
+}
