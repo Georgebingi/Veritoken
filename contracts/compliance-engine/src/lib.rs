@@ -455,41 +455,42 @@ impl ComplianceEngine {
 
     pub fn add_to_blocklist(env: Env, addr: Address) {
         Self::require_admin(&env);
-        env.storage().instance().extend_ttl(THRESHOLD, BUMP);
         let entry_key = DataKey::BlocklistEntry(addr.clone());
-        if !env.storage().persistent().has(&entry_key) {
-            env.storage().persistent().set(&entry_key, &true);
-            env.storage()
-                .persistent()
-                .extend_ttl(&entry_key, THRESHOLD, BUMP);
-            let size: u32 = env
-                .storage()
-                .persistent()
-                .get(&DataKey::BlocklistSize)
-                .unwrap_or(0);
-            let member_key = DataKey::BlocklistMember(size);
-            env.storage().persistent().set(&member_key, &addr);
-            env.storage()
-                .persistent()
-                .extend_ttl(&member_key, THRESHOLD, BUMP);
-            env.storage()
-                .persistent()
-                .set(&DataKey::BlocklistSize, &(size + 1));
-            env.storage()
-                .persistent()
-                .extend_ttl(&DataKey::BlocklistSize, THRESHOLD, BUMP);
-            let rules: ComplianceRules = env
-                .storage()
-                .instance()
-                .get(&DataKey::Rules)
-                .expect("rules must be set");
-            Self::append_policy_record(
-                &env,
-                rules,
-                PolicyChangeKind::BlocklistAdd,
-                String::from_str(&env, ""),
-            );
+        if env.storage().persistent().has(&entry_key) {
+            return;
         }
+        env.storage().instance().extend_ttl(THRESHOLD, BUMP);
+        env.storage().persistent().set(&entry_key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&entry_key, THRESHOLD, BUMP);
+        let size: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::BlocklistSize)
+            .unwrap_or(0);
+        let member_key = DataKey::BlocklistMember(size);
+        env.storage().persistent().set(&member_key, &addr);
+        env.storage()
+            .persistent()
+            .extend_ttl(&member_key, THRESHOLD, BUMP);
+        env.storage()
+            .persistent()
+            .set(&DataKey::BlocklistSize, &(size + 1));
+        env.storage()
+            .persistent()
+            .extend_ttl(&DataKey::BlocklistSize, THRESHOLD, BUMP);
+        let rules: ComplianceRules = env
+            .storage()
+            .instance()
+            .get(&DataKey::Rules)
+            .expect("rules must be set");
+        Self::append_policy_record(
+            &env,
+            rules,
+            PolicyChangeKind::BlocklistAdd,
+            String::from_str(&env, ""),
+        );
         env.events().publish((symbol_short!("blocked"),), addr);
     }
 

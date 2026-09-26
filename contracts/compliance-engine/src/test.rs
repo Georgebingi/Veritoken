@@ -6,8 +6,9 @@ use crate::{
 };
 use kyc_registry::{KycRegistry, KycRegistryClient};
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, Env, Error, String,
+    symbol_short,
+    testutils::{Address as _, Events as _, Ledger},
+    Address, Env, Error, String, Symbol, TryFromVal,
 };
 
 // ── Shared setup helpers ──────────────────────────────────────────────────────
@@ -55,6 +56,24 @@ fn rules(max: i128, min_hold: u64, max_hold_cnt: u32, paused: bool) -> Complianc
         allowlist_mode: false,
         max_holding_period: 0,
     }
+}
+
+fn blocked_event_count(env: &Env) -> usize {
+    let blocked = symbol_short!("blocked");
+    env.events()
+        .all()
+        .iter()
+        .filter(|(_, topics, _)| {
+            topics
+                .get(0)
+                .map(|topic| {
+                    Symbol::try_from_val(env, &topic)
+                        .map(|s| s == blocked)
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false)
+        })
+        .count()
 }
 
 // ── Basic transfer / pause / blocklist (preserved from original suite) ─────────
@@ -174,6 +193,16 @@ fn test_set_rules_rejects_negative_max_transfer() {
 }
 
 #[test]
+fn test_set_rules_accepts_zero_holding_periods() {
+    let (_, ce, _) = setup();
+    let configured = rules(0, 0, 0, false);
+    ce.set_rules(&configured);
+    let stored = ce.get_rules();
+    assert_eq!(stored.min_holding_period, 0);
+    assert_eq!(stored.max_holding_period, 0);
+}
+
+#[test]
 fn test_set_rules_rejects_max_holders_below_current_count() {
     let (env, ce, _) = setup();
     ce.register_holder(&Address::generate(&env));
@@ -237,19 +266,19 @@ fn test_activate_rules_fails_when_no_proposal_pending() {
 }
 
 #[test]
-fn test_propose_zero_delay_activates_immediately() {
-    let (env, ce, _) = setup(); // delay=0 by default in setup()
-    let r = ComplianceRules {
-        max_transfer_amount: 999,
-        min_holding_period: 0,
-        max_holders: 0,
-        require_same_jurisdiction: false,
-        paused: false,
-        allowlist_mode: false,
-        max_holding_period: 0,
-    };
-    ce.propose_rules(&r, &String::from_str(&env, "imm"));
-    ce.activate_rules(); // should not fail
+fn test_initialize_accepts_zero_rule_change_delay() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let kyc_id = env.register(KycRegistry, ());
+    KycRegistryClient::new(&env, &kyc_id).initialize(&admin);
+    let ce_id = env.register(ComplianceEngine, ());
+    let ce = ComplianceEngineClient::new(&env, &ce_id);
+    ce.initialize(&admin, &kyc_id, &0u64);
+    ce.propose_rules(&rules(999, 0, 0, false), &String::from_str(&env, "imm"));
+    let proposal = ce.get_pending_proposal().unwrap();
+    assert_eq!(proposal.activate_at, 0);
+    ce.activate_rules();
     assert_eq!(ce.get_rules().max_transfer_amount, 999);
 }
 
@@ -348,13 +377,15 @@ fn test_blocklist_remove_creates_blocklist_remove_version() {
 }
 
 #[test]
-fn test_duplicate_blocklist_add_does_not_create_version() {
+fn test_duplicate_blocklist_add_is_noop() {
     let (env, ce, _) = setup();
     let addr = Address::generate(&env);
     ce.add_to_blocklist(&addr);
-    let count = ce.policy_version_count();
-    ce.add_to_blocklist(&addr); // already in list — no new version
-    assert_eq!(ce.policy_version_count(), count);
+    assert_eq!(blocked_event_count(&env), 1);
+    let policy_versions = ce.policy_version_count();
+    ce.add_to_blocklist(&addr);
+    assert_eq!(blocked_event_count(&env), 0);
+    assert_eq!(ce.policy_version_count(), policy_versions);
 }
 
 #[test]
