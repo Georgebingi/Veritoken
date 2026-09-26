@@ -211,6 +211,10 @@ impl KycRegistry {
         env.storage().instance().extend_ttl(THRESHOLD, BUMP);
         caller.require_auth();
         Self::require_admin(&env, &caller);
+        let list = Self::admin_list(&env);
+        if list.contains(&new_admin) {
+            panic_with_error!(env, KycError::AdminAlreadyExists);
+        }
         env.storage()
             .instance()
             .set(&DataKey::PendingAdmin, &new_admin);
@@ -225,12 +229,13 @@ impl KycRegistry {
             .instance()
             .get(&DataKey::PendingAdmin)
             .expect("no pending admin");
-        pending.require_auth();
         let mut list = Self::admin_list(&env);
-        if !list.contains(&pending) {
-            list.push_back(pending.clone());
-            env.storage().instance().set(&DataKey::AdminList, &list);
+        if list.contains(&pending) {
+            panic_with_error!(env, KycError::AdminAlreadyExists);
         }
+        pending.require_auth();
+        list.push_back(pending.clone());
+        env.storage().instance().set(&DataKey::AdminList, &list);
         env.storage().instance().remove(&DataKey::PendingAdmin);
         env.events().publish((symbol_short!("admin_add"),), pending);
     }
@@ -370,6 +375,7 @@ impl KycRegistry {
         verifier.require_auth();
         Self::require_verifier(&env, &verifier);
         Self::validate_jurisdiction(&env, &jurisdiction);
+        Self::validate_expiry(&env, expiry);
         Self::record_transition(
             &env,
             &subject,
@@ -405,6 +411,7 @@ impl KycRegistry {
         let subjects_count = subjects.len();
         for (subject, tier, expiry, jurisdiction) in subjects.iter() {
             Self::validate_jurisdiction(&env, &jurisdiction);
+            Self::validate_expiry(&env, expiry);
             Self::record_transition(
                 &env,
                 &subject,
@@ -515,6 +522,9 @@ impl KycRegistry {
             .unwrap_or_else(|| panic_with_error!(env, KycError::NoRecord));
         if record.status != KycStatus::Approved {
             panic_with_error!(env, KycError::NotApproved);
+        }
+        if new_tier > 2 {
+            panic_with_error!(env, KycError::InvalidTier);
         }
         record.tier = new_tier;
         Self::record_transition(
@@ -1117,6 +1127,12 @@ impl KycRegistry {
         jurisdiction.copy_into_slice(&mut bytes);
         if bytes[0] < b'A' || bytes[0] > b'Z' || bytes[1] < b'A' || bytes[1] > b'Z' {
             panic_with_error!(env, KycError::InvalidJurisdiction);
+        }
+    }
+
+    fn validate_expiry(env: &Env, expiry: u64) {
+        if expiry != 0 && expiry <= env.ledger().timestamp() {
+            panic_with_error!(env, KycError::InvalidExpiry);
         }
     }
 

@@ -190,6 +190,27 @@ fn test_accept_admin_fails_when_no_pending() {
 }
 
 #[test]
+fn test_propose_existing_admin_fails() {
+    let (env, client, admin) = setup();
+    let new_admin = Address::generate(&env);
+    client.add_admin(&admin, &new_admin);
+
+    let res = client.try_propose_admin(&admin, &new_admin);
+    assert_eq!(res, Err(Ok(Error::from(KycError::AdminAlreadyExists))));
+}
+
+#[test]
+fn test_accept_admin_fails_when_pending_is_already_admin() {
+    let (env, client, admin) = setup();
+    let new_admin = Address::generate(&env);
+    client.propose_admin(&admin, &new_admin);
+    client.add_admin(&admin, &new_admin);
+
+    let res = client.try_accept_admin();
+    assert_eq!(res, Err(Ok(Error::from(KycError::AdminAlreadyExists))));
+}
+
+#[test]
 fn test_add_and_remove_admin() {
     let (env, client, admin) = setup();
     let second_admin = Address::generate(&env);
@@ -548,16 +569,30 @@ fn test_double_reject_records_both_transitions() {
 // ── Expiry edge cases ─────────────────────────────────────────────────────────
 
 #[test]
+fn test_approve_rejects_expiry_equal_to_now() {
+    let (env, client, admin) = setup();
+    let verifier = Address::generate(&env);
+    let subject = Address::generate(&env);
+    client.add_verifier(&admin, &verifier);
+    env.ledger().set_timestamp(1_000);
+
+    let res = client.try_approve(&verifier, &subject, &0, &1_000, &js(&env, "US"));
+
+    assert_eq!(res, Err(Ok(Error::from(KycError::InvalidExpiry))));
+    assert!(client.get_record_opt(&subject).is_none());
+    assert_eq!(client.get_lifecycle_count(&subject), 0);
+}
+
+#[test]
 fn test_approved_at_boundary_expiry_is_expired() {
     let (env, client, admin) = setup();
     let verifier = Address::generate(&env);
     let subject = Address::generate(&env);
     client.add_verifier(&admin, &verifier);
 
-    env.ledger().set_timestamp(1_000);
-    // expiry == current timestamp: the check is `expiry <= now`, so expiry == now is expired
+    env.ledger().set_timestamp(999);
     client.approve(&verifier, &subject, &0, &1_000, &js(&env, "US"));
-    // is_approved checks: expiry != 0 && expiry <= now → 1000 <= 1000 is true → expired
+    env.ledger().set_timestamp(1_000);
     assert!(!client.is_approved(&subject));
 }
 
@@ -568,7 +603,7 @@ fn test_approved_one_second_past_expiry_is_inactive() {
     let subject = Address::generate(&env);
     client.add_verifier(&admin, &verifier);
 
-    env.ledger().set_timestamp(1_000);
+    env.ledger().set_timestamp(999);
     client.approve(&verifier, &subject, &0, &1_000, &js(&env, "US"));
 
     env.ledger().set_timestamp(1_001);
@@ -945,6 +980,21 @@ fn test_update_tier_requires_approved_status() {
     // Should panic because subject is Revoked, not Approved
     let res = client.try_update_tier(&verifier, &subject, &2);
     assert!(res.is_err());
+}
+
+#[test]
+fn test_update_tier_rejects_invalid_tier_without_mutation() {
+    let (env, client, admin) = setup();
+    let verifier = Address::generate(&env);
+    let subject = Address::generate(&env);
+    client.add_verifier(&admin, &verifier);
+    client.approve(&verifier, &subject, &1, &0, &js(&env, "US"));
+
+    let res = client.try_update_tier(&verifier, &subject, &3);
+
+    assert_eq!(res, Err(Ok(Error::from(KycError::InvalidTier))));
+    assert_eq!(client.get_record(&subject).tier, 1);
+    assert_eq!(client.get_lifecycle_count(&subject), 1);
 }
 
 #[test]
