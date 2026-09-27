@@ -134,6 +134,12 @@ describe("loadConfig — RPC_URL whitespace trimming", () => {
     });
   });
 
+  it("names every checked env var when no RPC URL is configured", () => {
+    withEnv({ ...BASE_ENV, RPC_URL: undefined, STELLAR_RPC_URL: undefined }, () => {
+      expect(() => loadConfig()).toThrow(/checked RPC_URL, STELLAR_RPC_URL/);
+    });
+  });
+
   it("trims surrounding whitespace and accepts a valid URL", () => {
     withEnv({ ...BASE_ENV, RPC_URL: "  http://localhost:8000  " }, () => {
       const config = loadConfig();

@@ -75,6 +75,18 @@ describe("ClientFactory", () => {
     expect(factory.has("rwaToken")).toBe(false);
   });
 
+  it("constructor rejects an empty or malformed config up front", () => {
+    const server = mockServer();
+    expect(() => new ClientFactory({ server, contractIds: {} })).toThrow(/no clients configured/);
+    expect(() => new ClientFactory({ server, contractIds: [] as unknown as {} })).toThrow(/must be an object/);
+    expect(() => new ClientFactory({ server, contractIds: { kycRegistry: "  " } })).toThrow(
+      /contractIds\.kycRegistry must be a non-empty/,
+    );
+    expect(
+      () => new ClientFactory({ server, contractIds: { bogus: KYC_ID } as unknown as { kycRegistry: string } }),
+    ).toThrow(/unknown client "bogus"/);
+  });
+
   it("get() returns an injected override", () => {
     const fakeKyc = {} as KycRegistryClient;
     const factory = new ClientFactory({ contractIds: {}, overrides: { kycRegistry: fakeKyc } });

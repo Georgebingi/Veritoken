@@ -157,6 +157,37 @@ export function parseConfigJson(json: string): ImportResult {
     }
   }
 
+  const isInt = (v: unknown): boolean => typeof v === "number" && Number.isInteger(v);
+  for (let i = 0; i < obj.tierPolicies.length; i++) {
+    const entry = obj.tierPolicies[i] as Record<string, unknown> | null;
+    const where = `tierPolicies[${i}]`;
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      return { ok: false, error: `Invalid ${where}: expected an object.` };
+    }
+    if (!isInt(entry.fromTier)) {
+      return { ok: false, error: `Invalid ${where}.fromTier: expected an integer.` };
+    }
+    if (!isInt(entry.toTier)) {
+      return { ok: false, error: `Invalid ${where}.toTier: expected an integer.` };
+    }
+    const policy = entry.policy as Record<string, unknown> | null;
+    if (typeof policy !== "object" || policy === null || Array.isArray(policy)) {
+      return { ok: false, error: `Invalid ${where}.policy: expected an object.` };
+    }
+    if (typeof policy.blocked !== "boolean") {
+      return { ok: false, error: `Invalid ${where}.policy.blocked: expected a boolean.` };
+    }
+    if (typeof policy.max_transfer_amount !== "string" || !/^-?\d+$/.test(policy.max_transfer_amount)) {
+      return { ok: false, error: `Invalid ${where}.policy.max_transfer_amount: expected a decimal string.` };
+    }
+    if (!isInt(policy.min_from_tier)) {
+      return { ok: false, error: `Invalid ${where}.policy.min_from_tier: expected an integer.` };
+    }
+    if (!isInt(policy.min_to_tier)) {
+      return { ok: false, error: `Invalid ${where}.policy.min_to_tier: expected an integer.` };
+    }
+  }
+
   return { ok: true, config: raw as ComplianceConfigExport };
 }
 

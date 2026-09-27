@@ -85,6 +85,44 @@ describe("exportConfig / configToRules round-trip", () => {
   });
 });
 
+describe("parseConfigJson — tierPolicies entry validation", () => {
+  const VALID_ENTRY = {
+    fromTier: 0,
+    toTier: 2,
+    policy: { blocked: false, max_transfer_amount: "1000", min_from_tier: 0, min_to_tier: 0 },
+  };
+
+  function jsonWithEntries(entries: unknown[]): string {
+    const exported = exportConfig(BASE_RULES, [], null, { label: "test", network: "testnet" });
+    return JSON.stringify({ ...exported, tierPolicies: entries });
+  }
+
+  it("accepts a well-formed tier policy entry", () => {
+    expect(parseConfigJson(jsonWithEntries([VALID_ENTRY])).ok).toBe(true);
+  });
+
+  it.each([
+    ["a non-object entry", "oops", /tierPolicies\[0\]: expected an object/],
+    ["a missing policy object", { fromTier: 0, toTier: 2 }, /tierPolicies\[0\]\.policy/],
+    ["a string fromTier", { ...VALID_ENTRY, fromTier: "0" }, /fromTier/],
+    ["a non-boolean blocked flag", { ...VALID_ENTRY, policy: { ...VALID_ENTRY.policy, blocked: "no" } }, /blocked/],
+    [
+      "a non-numeric max_transfer_amount",
+      { ...VALID_ENTRY, policy: { ...VALID_ENTRY.policy, max_transfer_amount: "lots" } },
+      /max_transfer_amount/,
+    ],
+    [
+      "a missing min_to_tier",
+      { ...VALID_ENTRY, policy: { blocked: false, max_transfer_amount: "1000", min_from_tier: 0 } },
+      /min_to_tier/,
+    ],
+  ])("rejects %s", (_label, entry, pattern) => {
+    const result = parseConfigJson(jsonWithEntries([entry]));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(pattern);
+  });
+});
+
 describe("validateConfigForApply", () => {
   function makeConfig(overrides: Partial<ComplianceConfigExport["rules"]> = {}): ComplianceConfigExport {
     return exportConfig({ ...BASE_RULES, ...overrides } as ComplianceRules, [], null, {

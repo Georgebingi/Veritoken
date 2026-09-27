@@ -1641,6 +1641,31 @@ impl ComplianceEngine {
             .instance()
             .get(&DataKey::PolicyVersionCount)
             .unwrap_or(0);
+        // Collapse repeated writes of an identical state transition so the audit
+        // trail only records real policy changes.  List add/remove records do not
+        // carry the affected address, so identical-looking entries there can be
+        // distinct events and are always kept.
+        let dedupable = matches!(
+            change_kind,
+            PolicyChangeKind::ImmediateRuleUpdate
+                | PolicyChangeKind::DelayedRuleActivation
+                | PolicyChangeKind::Pause
+                | PolicyChangeKind::Unpause
+        );
+        if dedupable && count > 0 {
+            let last: Option<PolicyRecord> = env
+                .storage()
+                .instance()
+                .get(&DataKey::PolicyVersion(count - 1));
+            if let Some(last) = last {
+                if last.rules == rules
+                    && last.change_kind == change_kind
+                    && last.description == description
+                {
+                    return;
+                }
+            }
+        }
         let rec = PolicyRecord {
             version: count,
             activation_timestamp: env.ledger().timestamp(),
