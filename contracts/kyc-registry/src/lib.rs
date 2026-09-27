@@ -32,8 +32,11 @@ pub enum KycError {
     BatchTooLarge = 11,
     /// The address is already in the admin list.
     AdminAlreadyExists = 12,
+    InvalidTier = 13,
+    InvalidExpiry = 14,
     EmptyBatch = 15,
     InvalidRevokeTier = 16,
+    DuplicateHistoryEntry = 17,
 }
 
 /// Composite key for per-subject lifecycle history entries.
@@ -1259,6 +1262,9 @@ impl KycRegistry {
             subject: subject.clone(),
             seq,
         });
+        if env.storage().persistent().has(&entry_key) {
+            panic_with_error!(env, KycError::DuplicateHistoryEntry);
+        }
         env.storage().persistent().set(&entry_key, &transition);
         env.storage()
             .persistent()

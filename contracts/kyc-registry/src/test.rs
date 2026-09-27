@@ -1,6 +1,8 @@
 #![cfg(test)]
 
-use crate::{KycError, KycRegistry, KycRegistryClient, KycStatus, KycTransitionKind};
+use crate::{
+    DataKey, HistoryKey, KycError, KycRegistry, KycRegistryClient, KycStatus, KycTransitionKind,
+};
 use soroban_sdk::{
     testutils::{storage::Instance, Address as _, Ledger},
     Address, Env, Error, String, Vec,
@@ -1150,6 +1152,39 @@ fn test_seq_numbers_are_gapless() {
     for i in 0..hist.len() {
         assert_eq!(hist.get(i).unwrap().seq, i, "gap at position {i}");
     }
+}
+
+#[test]
+fn test_lifecycle_history_rejects_duplicate_sequence_key() {
+    let (env, client, admin) = setup();
+    let verifier = Address::generate(&env);
+    let subject = Address::generate(&env);
+    client.add_verifier(&admin, &verifier);
+
+    client.approve(&verifier, &subject, &1, &0, &js(&env, "US"));
+    let contract_id = client.address.clone();
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .set(&DataKey::LifecycleCount(subject.clone()), &0u32);
+    });
+
+    assert_eq!(
+        client.try_revoke(&verifier, &subject),
+        Err(Ok(Error::from(KycError::DuplicateHistoryEntry)))
+    );
+
+    env.as_contract(&contract_id, || {
+        let entry = env
+            .storage()
+            .persistent()
+            .get::<DataKey, crate::KycTransition>(&DataKey::LifecycleEntry(HistoryKey {
+                subject: subject.clone(),
+                seq: 0,
+            }))
+            .expect("original history entry must remain");
+        assert_eq!(entry.kind, KycTransitionKind::Approve);
+    });
 }
 
 /// After any approve the subject must pass is_approved (if not expired).
