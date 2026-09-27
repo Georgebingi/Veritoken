@@ -797,7 +797,7 @@ impl PropertyToken {
         let mut checkpoint = Self::settle_holder(&env, holder.clone());
         let amount = checkpoint.unclaimed_total;
         if amount <= 0 {
-            return 0;
+            panic_with_error!(env, PropertyError::InvalidDividendAmount);
         }
         checkpoint.unclaimed_total = 0;
         checkpoint.unclaimed_rent = 0;
