@@ -35,6 +35,9 @@ export function buildContractTx(
   sequence?: string,
   opts: BuildTxOptions = {},
 ): string {
+  if (typeof method !== "string" || method.trim() === "") {
+    throw new Error("method must be a non-empty string");
+  }
   if ((source === undefined) !== (sequence === undefined)) {
     throw new Error("source and sequence must be provided together");
   }

@@ -462,6 +462,19 @@ fn test_invalid_property_type_panics_in_constructor() {
 }
 
 #[test]
+#[should_panic]
+fn test_blank_property_id_panics_in_constructor() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let kyc_id = Address::generate(&env);
+    let ce_id = Address::generate(&env);
+    let mut bad_meta = meta(&env);
+    bad_meta.property_id = String::from_str(&env, "   ");
+    env.register(PropertyToken, (admin, kyc_id, ce_id, bad_meta));
+}
+
+#[test]
 fn test_valid_property_types_accepted_in_constructor() {
     let env = Env::default();
     env.mock_all_auths();
