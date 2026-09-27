@@ -82,6 +82,7 @@ pub enum InvoiceStatus {
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct JournalEntry {
+    pub event_tag: String,
     pub from_status: InvoiceStatus,
     pub to_status: InvoiceStatus,
     pub ledger: u32,
@@ -1297,9 +1298,24 @@ impl InvoiceToken {
             .unwrap_or_else(|| Vec::new(env))
     }
 
+    fn journal_event_tag(env: &Env, to: InvoiceStatus) -> String {
+        match to {
+            InvoiceStatus::Created => String::from_str(env, "created"),
+            InvoiceStatus::Issued => String::from_str(env, "issued"),
+            InvoiceStatus::PartiallySettled => String::from_str(env, "partially_settled"),
+            InvoiceStatus::FullySettled => String::from_str(env, "fully_settled"),
+            InvoiceStatus::Redeemed => String::from_str(env, "redeemed"),
+        }
+    }
+
     /// Atomically records a journal entry and writes the new status.
     fn transition_status(env: &Env, invoice_id: &String, from: InvoiceStatus, to: InvoiceStatus) {
+        let event_tag = Self::journal_event_tag(env, to);
+        if event_tag.is_empty() {
+            panic_with_error!(env, InvoiceError::InvalidMetadata);
+        }
         let entry = JournalEntry {
+            event_tag,
             from_status: from,
             to_status: to,
             ledger: env.ledger().sequence(),

@@ -1585,6 +1585,32 @@ impl ComplianceEngine {
         change_kind: PolicyChangeKind,
         description: String,
     ) {
+        let description = if description.is_empty() {
+            match change_kind {
+                PolicyChangeKind::ImmediateRuleUpdate => {
+                    String::from_str(env, "Immediate rule update")
+                }
+                PolicyChangeKind::DelayedRuleActivation => {
+                    String::from_str(env, "Delayed rule activation")
+                }
+                PolicyChangeKind::Pause => String::from_str(env, "Compliance paused"),
+                PolicyChangeKind::Unpause => String::from_str(env, "Compliance unpaused"),
+                PolicyChangeKind::BlocklistAdd => {
+                    String::from_str(env, "Address added to blocklist")
+                }
+                PolicyChangeKind::BlocklistRemove => {
+                    String::from_str(env, "Address removed from blocklist")
+                }
+                PolicyChangeKind::AllowlistAdd => {
+                    String::from_str(env, "Address added to allowlist")
+                }
+                PolicyChangeKind::AllowlistRemove => {
+                    String::from_str(env, "Address removed from allowlist")
+                }
+            }
+        } else {
+            description
+        };
         let count: u32 = env
             .storage()
             .instance()
