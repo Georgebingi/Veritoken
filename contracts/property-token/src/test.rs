@@ -1550,3 +1550,32 @@ fn test_whitespace_only_legal_name_rejected_in_constructor() {
     bad_meta.legal_name = String::from_str(&env, "     ");
     env.register(PropertyToken, (admin, kyc_id, ce_id, bad_meta));
 }
+
+// ── Invalid claim amount rejection (#800) ────────────────────────────────────
+
+#[test]
+#[should_panic(expected = "InvalidDividendAmount")]
+fn test_claim_dividend_rejects_zero_unclaimed_balance() {
+    let h = setup();
+    let alice = Address::generate(&h.env);
+    h.approve_kyc(&alice);
+    h.token.mint(&alice, &100);
+
+    // No dividend deposited → unclaimed_total is 0
+    h.token.claim_dividend(&alice);
+}
+
+#[test]
+#[should_panic(expected = "InvalidDividendAmount")]
+fn test_claim_dividend_rejects_after_already_claimed() {
+    let h = setup();
+    let alice = Address::generate(&h.env);
+    h.approve_kyc(&alice);
+    h.token.mint(&alice, &100);
+
+    h.token.deposit_dividend(&1_000, &0);
+    h.token.claim_dividend(&alice);
+
+    // Second claim with zero balance should fail
+    h.token.claim_dividend(&alice);
+}
