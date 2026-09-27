@@ -207,6 +207,20 @@ impl CarbonCreditToken {
         compliance_engine: Address,
         meta: ProjectMeta,
     ) {
+        // Double-init guard: if ProjectMeta is already present this constructor
+        // has already run for this instance. Fail before writing any state.
+        if env
+            .storage()
+            .instance()
+            .has(&DataKey::ProjectMeta)
+        {
+            panic_with_error!(env, CarbonError::AlreadyInitialized);
+        }
+        // Blank project_id guard: an empty or whitespace-only project_id is
+        // meaningless and breaks verification and audit logic.
+        if meta.project_id.is_empty() {
+            panic!("project_id must not be empty");
+        }
         Self::validate_project_type(&env, &meta.project_type);
         if !th::is_valid_vintage_year(meta.vintage_year) {
             panic!("invalid vintage year: must be 1990–2050");

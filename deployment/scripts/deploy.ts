@@ -103,6 +103,34 @@ function sha256Hex(data: Buffer): string {
   return crypto.createHash("sha256").update(data).digest("hex");
 }
 
+/**
+ * Parse a comma-separated string of contract identifiers.
+ *
+ * Each entry is trimmed; empty entries (produced by trailing commas, double
+ * commas, or whitespace-only segments) are rejected by throwing an error.
+ * This prevents ambiguous manifests and upstream deployment failures that are
+ * hard to diagnose.
+ *
+ * @param raw - A comma-separated string of contract IDs, e.g. "kyc-registry,rwa-token".
+ * @returns   - An array of non-empty, trimmed contract ID strings.
+ * @throws    - If any entry is empty after trimming.
+ */
+export function parseContractIds(raw: string): string[] {
+  const entries = raw.split(",");
+  const result: string[] = [];
+  for (const entry of entries) {
+    const trimmed = entry.trim();
+    if (trimmed === "") {
+      throw new Error(
+        `parseContractIds: empty contract identifier in input "${raw}". ` +
+          "Remove trailing commas and blank entries before proceeding."
+      );
+    }
+    result.push(trimmed);
+  }
+  return result;
+}
+
 function resolveArtifactPath(artifactTemplate: string): string {
   const resolved = artifactTemplate.replace("${wasm_dir}", WASM_DIR);
   if (!fs.existsSync(resolved)) {

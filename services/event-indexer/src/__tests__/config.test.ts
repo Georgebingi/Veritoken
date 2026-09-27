@@ -73,3 +73,136 @@ describe("loadConfig — POLL_INTERVAL_MS NaN guard (#606)", () => {
     });
   });
 });
+
+describe("loadConfig — PORT range validation", () => {
+  it("throws when PORT is 0", () => {
+    withEnv({ ...BASE_ENV, PORT: "0" }, () => {
+      expect(() => loadConfig()).toThrow("PORT must be an integer between 1 and 65535");
+    });
+  });
+
+  it("throws when PORT is negative", () => {
+    withEnv({ ...BASE_ENV, PORT: "-1" }, () => {
+      expect(() => loadConfig()).toThrow("PORT must be an integer between 1 and 65535");
+    });
+  });
+
+  it("throws when PORT exceeds 65535", () => {
+    withEnv({ ...BASE_ENV, PORT: "65536" }, () => {
+      expect(() => loadConfig()).toThrow("PORT must be an integer between 1 and 65535");
+    });
+  });
+
+  it("throws when PORT is a non-numeric string", () => {
+    withEnv({ ...BASE_ENV, PORT: "abc" }, () => {
+      expect(() => loadConfig()).toThrow("PORT must be an integer between 1 and 65535");
+    });
+  });
+
+  it("accepts PORT at the lower boundary (1)", () => {
+    withEnv({ ...BASE_ENV, PORT: "1" }, () => {
+      const config = loadConfig();
+      expect(config.port).toBe(1);
+    });
+  });
+
+  it("accepts PORT at the upper boundary (65535)", () => {
+    withEnv({ ...BASE_ENV, PORT: "65535" }, () => {
+      const config = loadConfig();
+      expect(config.port).toBe(65535);
+    });
+  });
+
+  it("defaults to 3001 when PORT is not set", () => {
+    withEnv({ ...BASE_ENV, PORT: undefined }, () => {
+      const config = loadConfig();
+      expect(config.port).toBe(3001);
+    });
+  });
+});
+
+describe("loadConfig — RPC_URL whitespace trimming", () => {
+  it("throws when RPC_URL is only spaces", () => {
+    withEnv({ ...BASE_ENV, RPC_URL: "   " }, () => {
+      expect(() => loadConfig()).toThrow("RPC_URL environment variable is required");
+    });
+  });
+
+  it("throws when RPC_URL is a tab character", () => {
+    withEnv({ ...BASE_ENV, RPC_URL: "\t" }, () => {
+      expect(() => loadConfig()).toThrow("RPC_URL environment variable is required");
+    });
+  });
+
+  it("trims surrounding whitespace and accepts a valid URL", () => {
+    withEnv({ ...BASE_ENV, RPC_URL: "  http://localhost:8000  " }, () => {
+      const config = loadConfig();
+      expect(config.rpcUrl).toBe("http://localhost:8000");
+    });
+  });
+});
+
+describe("parseContracts — blank label rejection", () => {
+  it("throws when a label is empty (entry starts with colon)", () => {
+    withEnv({ ...BASE_ENV, CONTRACT_IDS: ":CCONTRACTID1111111111111111111111111111111111111111" }, () => {
+      expect(() => loadConfig()).toThrow(/blank label/);
+    });
+  });
+
+  it("throws when a label is only whitespace", () => {
+    withEnv({ ...BASE_ENV, CONTRACT_IDS: "   :CCONTRACTID1111111111111111111111111111111111111111" }, () => {
+      expect(() => loadConfig()).toThrow(/blank label/);
+    });
+  });
+
+  it("accepts a well-formed label:contractId pair", () => {
+    withEnv({ ...BASE_ENV, CONTRACT_IDS: "rwa:CCONTRACTID1111111111111111111111111111111111111111" }, () => {
+      const config = loadConfig();
+      expect(config.contracts[0].label).toBe("rwa");
+    });
+  });
+});
+
+describe("parseContracts — duplicate detection", () => {
+  it("throws on duplicate labels", () => {
+    withEnv(
+      {
+        ...BASE_ENV,
+        CONTRACT_IDS:
+          "rwa:CCONTRACTAAA1111111111111111111111111111111111111,rwa:CCONTRACTBBB1111111111111111111111111111111111111",
+      },
+      () => {
+        expect(() => loadConfig()).toThrow(/duplicate label.*rwa/);
+      }
+    );
+  });
+
+  it("throws on duplicate contract IDs", () => {
+    withEnv(
+      {
+        ...BASE_ENV,
+        CONTRACT_IDS:
+          "alpha:CCONTRACTAAA1111111111111111111111111111111111111,beta:CCONTRACTAAA1111111111111111111111111111111111111",
+      },
+      () => {
+        expect(() => loadConfig()).toThrow(/duplicate contract ID/);
+      }
+    );
+  });
+
+  it("accepts a list with no duplicates", () => {
+    withEnv(
+      {
+        ...BASE_ENV,
+        CONTRACT_IDS:
+          "alpha:CCONTRACTAAA1111111111111111111111111111111111111,beta:CCONTRACTBBB1111111111111111111111111111111111111",
+      },
+      () => {
+        const config = loadConfig();
+        expect(config.contracts).toHaveLength(2);
+        expect(config.contracts[0].label).toBe("alpha");
+        expect(config.contracts[1].label).toBe("beta");
+      }
+    );
+  });
+});
