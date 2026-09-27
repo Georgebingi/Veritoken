@@ -412,6 +412,10 @@ impl PropertyToken {
     pub fn transfer(env: Env, from: Address, to: Address, shares: i128) {
         env.storage().instance().extend_ttl(THRESHOLD, BUMP);
         from.require_auth();
+        // Reject self-transfers to prevent accounting pollution.
+        if from == to {
+            panic!("self-transfer not allowed");
+        }
         match th::evaluate_transfer_compliance(&env, &from, &to, shares) {
             th::TransferDecision::Allow => {}
             th::TransferDecision::Deny(ref reason) => {

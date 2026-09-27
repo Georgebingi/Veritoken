@@ -6,7 +6,8 @@
   "scripts": {
     "deploy": "tsx deploy.ts",
     "check-funded": "tsx check-funded.ts",
-    "verify-manifest": "tsx verify-manifest.ts"
+    "verify-manifest": "tsx verify-manifest.ts",
+    "test": "vitest --run"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^12.3.0"
@@ -14,6 +15,7 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "tsx": "^4.15.7",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
   }
 }

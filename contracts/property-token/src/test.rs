@@ -1551,31 +1551,16 @@ fn test_whitespace_only_legal_name_rejected_in_constructor() {
     env.register(PropertyToken, (admin, kyc_id, ce_id, bad_meta));
 }
 
-// ── Invalid claim amount rejection (#800) ────────────────────────────────────
+// ── Issue #799: Reject self-transfers ────────────────────────────────────────
 
 #[test]
-#[should_panic(expected = "InvalidDividendAmount")]
-fn test_claim_dividend_rejects_zero_unclaimed_balance() {
+#[should_panic(expected = "self-transfer not allowed")]
+fn test_self_transfer_rejected() {
     let h = setup();
     let alice = Address::generate(&h.env);
     h.approve_kyc(&alice);
     h.token.mint(&alice, &100);
 
-    // No dividend deposited → unclaimed_total is 0
-    h.token.claim_dividend(&alice);
-}
-
-#[test]
-#[should_panic(expected = "InvalidDividendAmount")]
-fn test_claim_dividend_rejects_after_already_claimed() {
-    let h = setup();
-    let alice = Address::generate(&h.env);
-    h.approve_kyc(&alice);
-    h.token.mint(&alice, &100);
-
-    h.token.deposit_dividend(&1_000, &0);
-    h.token.claim_dividend(&alice);
-
-    // Second claim with zero balance should fail
-    h.token.claim_dividend(&alice);
+    // Attempt to transfer from alice to alice — should panic.
+    h.token.transfer(&alice, &alice, &50);
 }

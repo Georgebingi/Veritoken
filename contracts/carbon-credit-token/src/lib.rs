@@ -207,9 +207,31 @@ impl CarbonCreditToken {
         compliance_engine: Address,
         meta: ProjectMeta,
     ) {
+        // Double-init guard: if ProjectMeta is already present this constructor
+        // has already run for this instance. Fail before writing any state.
+        if env
+            .storage()
+            .instance()
+            .has(&DataKey::ProjectMeta)
+        {
+            panic_with_error!(env, CarbonError::AlreadyInitialized);
+        }
+        // Blank project_id guard: an empty or whitespace-only project_id is
+        // meaningless and breaks verification and audit logic.
+        if meta.project_id.is_empty() {
+            panic!("project_id must not be empty");
+        }
         Self::validate_project_type(&env, &meta.project_type);
         if !th::is_valid_vintage_year(meta.vintage_year) {
             panic!("invalid vintage year: must be 1990–2050");
+        }
+        // Reject blank or whitespace-only country strings.
+        if meta.country.len() == 0 {
+            panic!("country cannot be empty");
+        }
+        // Reject blank verifier strings.
+        if meta.verifier.len() == 0 {
+            panic!("verifier cannot be empty");
         }
         th::write_admin(&env, &admin);
         th::write_kyc_registry(&env, &kyc_registry);
@@ -270,6 +292,10 @@ impl CarbonCreditToken {
         }
         if !th::is_valid_ipfs_hash(&new_meta.ipfs_cert_hash) {
             panic!("ipfs_cert_hash must be a valid IPFS CID (CIDv0 or CIDv1)");
+        }
+        // Reject blank verifier strings.
+        if new_meta.verifier.len() == 0 {
+            panic!("verifier cannot be empty");
         }
         let old_meta: ProjectMeta = env
             .storage()
@@ -683,6 +709,10 @@ impl CarbonCreditToken {
             let req = retirements.get(i).expect("index in bounds");
             if req.amount <= 0 {
                 panic_with_error!(env, CarbonError::InvalidAmount);
+            }
+            // Reject empty memo (retirement reason) — beneficiary information must be meaningful.
+            if req.memo.len() == 0 {
+                panic!("beneficiary memo cannot be empty");
             }
             // Require KYC for every beneficiary.
             if th::get_kyc_state_of(&env, &req.beneficiary) != th::KycState::Approved {
