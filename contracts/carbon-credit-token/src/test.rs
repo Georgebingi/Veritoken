@@ -1700,3 +1700,63 @@ fn test_index_beneficiary_receipt_no_duplicate_on_repeated_global_idx() {
     assert_eq!(h.token.retirement_count(), 2);
 }
 
+
+// ── Regression: double-init guard ────────────────────────────────────────────
+
+/// Calling initialize() after the constructor must always fail (AlreadyInitialized).
+/// This is the existing guard; the new test specifically verifies the
+/// __constructor's own double-init check via the ProjectMeta sentinel.
+#[test]
+fn test_constructor_double_init_rejected_via_initialize() {
+    let h = setup();
+    let attacker = Address::generate(&h.env);
+    let result = h
+        .token
+        .try_initialize(&attacker, &Address::generate(&h.env), &Address::generate(&h.env), &meta(&h.env));
+    assert!(result.is_err(), "re-initialization must always be rejected");
+}
+
+// ── Regression: blank project_id guard ───────────────────────────────────────
+
+/// Passing an empty project_id to __constructor must panic before any state is written.
+#[test]
+#[should_panic]
+fn test_constructor_rejects_empty_project_id() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let kyc_id = env.register(KycRegistry, ());
+    let kyc = KycRegistryClient::new(&env, &kyc_id);
+    kyc.initialize(&admin);
+    let compliance_id = env.register(ComplianceEngine, ());
+    let compliance = ComplianceEngineClient::new(&env, &compliance_id);
+    compliance.initialize(&admin, &kyc_id, &0u64);
+
+    let mut bad_meta = meta(&env);
+    bad_meta.project_id = String::from_str(&env, "");
+    // Must panic — empty project_id is not allowed.
+    env.register(CarbonCreditToken, (admin, kyc_id, compliance_id, bad_meta));
+}
+
+/// A non-empty project_id is accepted normally — the guard must not affect the happy path.
+#[test]
+fn test_constructor_accepts_nonempty_project_id() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let kyc_id = env.register(KycRegistry, ());
+    let kyc = KycRegistryClient::new(&env, &kyc_id);
+    kyc.initialize(&admin);
+    let compliance_id = env.register(ComplianceEngine, ());
+    let compliance = ComplianceEngineClient::new(&env, &compliance_id);
+    compliance.initialize(&admin, &kyc_id, &0u64);
+
+    let mut m = meta(&env);
+    m.project_id = String::from_str(&env, "VCS-9999");
+    let token_id = env.register(CarbonCreditToken, (admin, kyc_id, compliance_id, m));
+    let token = CarbonCreditTokenClient::new(&env, &token_id);
+    assert_eq!(
+        token.get_meta().project_id,
+        String::from_str(&env, "VCS-9999")
+    );
+}
