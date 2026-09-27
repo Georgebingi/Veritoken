@@ -21,6 +21,7 @@
  */
 
 import * as fs from "node:fs";
+import { pathToFileURL } from "node:url";
 import {
   Keypair,
   Networks,
@@ -31,18 +32,25 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 
-const MANIFEST_FILE = requireEnv("MANIFEST_FILE");
-const RPC_URL = requireEnv("STELLAR_RPC_URL");
 const NETWORK_PASSPHRASE =
   process.env.STELLAR_NETWORK_PASSPHRASE ?? Networks.TESTNET;
 
 // For simulation we use a random keypair — no signing needed
 const SIM_KEYPAIR = Keypair.random();
 
-function requireEnv(key: string): string {
+const ENV_DESCRIPTIONS: Record<string, string> = {
+  MANIFEST_FILE: "path to the deployment manifest JSON file to verify",
+  STELLAR_RPC_URL: "Soroban RPC endpoint used to query the deployed contracts",
+};
+
+export function requireEnv(key: string): string {
   const value = process.env[key];
-  if (!value) {
-    throw new Error(`Required environment variable ${key} is not set.`);
+  if (!value || value.trim() === "") {
+    const purpose = ENV_DESCRIPTIONS[key] ? ` (${ENV_DESCRIPTIONS[key]})` : "";
+    throw new Error(
+      `verify-manifest: required environment variable ${key}${purpose} is not set or is empty. ` +
+        `Set ${key} before running manifest verification.`
+    );
   }
   return value;
 }
@@ -60,6 +68,25 @@ interface Manifest {
   network: string;
   deployed_at: string;
   contracts: Record<string, ManifestEntry>;
+}
+
+/**
+ * Returns the manifest's contract entries with labels trimmed, rejecting
+ * blank or whitespace-only labels so malformed manifests fail loudly
+ * instead of producing unreadable verification output.
+ */
+export function parseManifestEntries(
+  contracts: Record<string, ManifestEntry>
+): Array<[string, ManifestEntry]> {
+  return Object.entries(contracts).map(([rawLabel, entry]) => {
+    const label = rawLabel.trim();
+    if (label === "") {
+      throw new Error(
+        `Manifest contains a blank contract label ${JSON.stringify(rawLabel)} — every contract entry must have a non-empty name.`
+      );
+    }
+    return [label, entry];
+  });
 }
 
 async function callName(
@@ -143,6 +170,9 @@ async function contractExists(
 }
 
 async function main(): Promise<void> {
+  const MANIFEST_FILE = requireEnv("MANIFEST_FILE");
+  const RPC_URL = requireEnv("STELLAR_RPC_URL");
+
   console.log("=== Veritoken Manifest Verification ===");
   console.log(`Manifest: ${MANIFEST_FILE}`);
   console.log(`RPC URL:  ${RPC_URL}`);
@@ -157,13 +187,14 @@ async function main(): Promise<void> {
   );
   console.log(`Network:          ${manifest.network}`);
   console.log(`Deployed at:      ${manifest.deployed_at}`);
-  console.log(`Contracts:        ${Object.keys(manifest.contracts).length}`);
+  const entries = parseManifestEntries(manifest.contracts);
+  console.log(`Contracts:        ${entries.length}`);
   console.log("");
 
   const server = new SorobanRpc.Server(RPC_URL);
   let allPassed = true;
 
-  for (const [name, entry] of Object.entries(manifest.contracts)) {
+  for (const [name, entry] of entries) {
     process.stdout.write(`  Verifying ${name} (${entry.contract_id}) ... `);
 
     const exists = await contractExists(server, entry.contract_id);
@@ -190,7 +221,10 @@ async function main(): Promise<void> {
   console.log("✓ All contracts verified successfully.");
 }
 
-main().catch((err) => {
-  console.error("verify-manifest failed:", err);
-  process.exit(1);
-});
+// Only run when executed directly, so tests can import the helpers above.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error("verify-manifest failed:", err);
+    process.exit(1);
+  });
+}

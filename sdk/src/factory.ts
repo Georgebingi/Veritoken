@@ -122,11 +122,18 @@ export function createClients(config: CreateClientsConfig): Partial<ClientMap> {
   for (const key of Object.keys(CTORS) as ClientKey[]) {
     const override = config.overrides?.[key];
     if (override) {
+      const overrideId = (override as { contractId?: unknown }).contractId;
+      if (typeof overrideId === "string" && overrideId.trim() === "") {
+        throw new Error(`overrides.${key} has a blank contractId — supply a valid contract ID or omit the override.`);
+      }
       (clients as Record<ClientKey, unknown>)[key] = override;
       continue;
     }
     const contractId = config.contractIds[key];
-    if (!contractId) continue;
+    if (contractId === undefined) continue;
+    if (contractId.trim() === "") {
+      throw new Error(`contractIds.${key} is blank — supply a valid contract ID or omit the key.`);
+    }
     const Ctor = CTORS[key];
     (clients as Record<ClientKey, unknown>)[key] = new Ctor(contractId, server, networkPassphrase);
   }

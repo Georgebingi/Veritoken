@@ -157,7 +157,31 @@ export function parseConfigJson(json: string): ImportResult {
     }
   }
 
+  for (let i = 0; i < obj.tierPolicies.length; i++) {
+    const error = tierPolicyEntryError(obj.tierPolicies[i]);
+    if (error) {
+      return { ok: false, error: `Invalid tierPolicies[${i}]: ${error}` };
+    }
+  }
+
   return { ok: true, config: raw as ComplianceConfigExport };
+}
+
+/** Returns a reason the entry is structurally malformed, or null if it is well-formed. */
+function tierPolicyEntryError(entry: unknown): string | null {
+  if (typeof entry !== "object" || entry === null) return "expected an object.";
+  const e = entry as Record<string, unknown>;
+  if (!Number.isInteger(e.fromTier)) return '"fromTier" must be an integer.';
+  if (!Number.isInteger(e.toTier)) return '"toTier" must be an integer.';
+  if (typeof e.policy !== "object" || e.policy === null) return 'missing or invalid "policy".';
+  const p = e.policy as Record<string, unknown>;
+  if (typeof p.blocked !== "boolean") return '"policy.blocked" must be a boolean.';
+  if (typeof p.max_transfer_amount !== "string" || !/^-?\d+$/.test(p.max_transfer_amount)) {
+    return '"policy.max_transfer_amount" must be a decimal string.';
+  }
+  if (!Number.isInteger(p.min_from_tier)) return '"policy.min_from_tier" must be an integer.';
+  if (!Number.isInteger(p.min_to_tier)) return '"policy.min_to_tier" must be an integer.';
+  return null;
 }
 
 /** Convert a parsed export back to typed domain objects ready for the UI. */
