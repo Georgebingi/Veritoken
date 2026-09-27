@@ -20,10 +20,11 @@ export const MAINNET_PASSPHRASE = "Public Global Stellar Network ; September 201
 
 function parseContracts(raw: string): ContractConfig[] {
   if (!raw.trim()) return [];
-  return raw
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
+  const entries = raw.split(",").map((entry) => entry.trim());
+  if (entries.some((entry) => entry.length === 0)) {
+    throw new Error("CONTRACT_IDS must not contain empty entries");
+  }
+  return entries
     .map((entry) => {
       const colonIdx = entry.indexOf(":");
       if (colonIdx === -1) {

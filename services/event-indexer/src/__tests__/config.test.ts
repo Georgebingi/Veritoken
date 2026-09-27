@@ -73,3 +73,11 @@ describe("loadConfig — POLL_INTERVAL_MS NaN guard (#606)", () => {
     });
   });
 });
+
+describe("loadConfig - CONTRACT_IDS empty entry guard (#812)", () => {
+  it("throws when CONTRACT_IDS contains an empty CSV entry", () => {
+    withEnv({ ...BASE_ENV, CONTRACT_IDS: "rwa:C123,,kyc:C456" }, () => {
+      expect(() => loadConfig()).toThrow("CONTRACT_IDS must not contain empty entries");
+    });
+  });
+});
