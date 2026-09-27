@@ -989,8 +989,29 @@ fn test_journal_records_created_to_issued() {
     h.token.issue(&inv_id(&h.env), &holder, &1_000);
     let journal = h.token.get_journal(&inv_id(&h.env));
     assert_eq!(journal.len(), 1);
+    assert_eq!(
+        journal.get(0).unwrap().event_tag,
+        String::from_str(&h.env, "issued")
+    );
     assert_eq!(journal.get(0).unwrap().from_status, InvoiceStatus::Created);
     assert_eq!(journal.get(0).unwrap().to_status, InvoiceStatus::Issued);
+}
+
+#[test]
+fn test_journal_event_tags_are_non_empty() {
+    let h = setup();
+    let holder = Address::generate(&h.env);
+    h.approve_kyc(&holder);
+
+    h.token.issue(&inv_id(&h.env), &holder, &1_000);
+    h.token.partial_settle(&inv_id(&h.env), &500_000_000_000);
+    h.token.settle(&inv_id(&h.env));
+    h.token.redeem(&inv_id(&h.env), &holder, &1_000);
+
+    let journal = h.token.get_journal(&inv_id(&h.env));
+    for i in 0..journal.len() {
+        assert!(!journal.get(i).unwrap().event_tag.is_empty());
+    }
 }
 
 #[test]

@@ -1418,6 +1418,19 @@ fn test_set_tier_policy_rejects_negative_max_transfer_amount() {
     assert!(ce.get_tier_policy(&0u32, &2u32).is_some());
 }
 
+#[test]
+fn test_policy_records_normalize_empty_descriptions() {
+    let (env, ce, _) = setup();
+    ce.set_rules(&rules(42, 0, 0, false));
+
+    let record = ce.get_current_policy_version();
+    assert_eq!(record.change_kind, PolicyChangeKind::ImmediateRuleUpdate);
+    assert_eq!(
+        record.description,
+        String::from_str(&env, "Immediate rule update")
+    );
+}
+
 // Fix 3 — validate_rules: max_holders boundary
 // The guard rejects max_holders strictly less than the live holder count.
 // The exact-equal boundary (max_holders == holder_count) must be accepted:
