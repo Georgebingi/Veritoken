@@ -1700,3 +1700,74 @@ fn test_index_beneficiary_receipt_no_duplicate_on_repeated_global_idx() {
     assert_eq!(h.token.retirement_count(), 2);
 }
 
+// ── Issue #796: Reject malformed country strings ────────────────────────────
+
+#[test]
+#[should_panic(expected = "country cannot be empty")]
+fn test_empty_country_rejected_in_constructor() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let kyc_id = env.register(KycRegistry, ());
+    let compliance_id = env.register(ComplianceEngine, ());
+
+    let mut m = meta(&env);
+    m.country = String::from_str(&env, "");
+
+    let _ = env.register(
+        CarbonCreditToken,
+        (admin.clone(), kyc_id.clone(), compliance_id.clone(), m),
+    );
+}
+
+// ── Issue #797: Reject empty verifier names ──────────────────────────────────
+
+#[test]
+#[should_panic(expected = "verifier cannot be empty")]
+fn test_empty_verifier_rejected_in_constructor() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let kyc_id = env.register(KycRegistry, ());
+    let compliance_id = env.register(ComplianceEngine, ());
+
+    let mut m = meta(&env);
+    m.verifier = String::from_str(&env, "");
+
+    let _ = env.register(
+        CarbonCreditToken,
+        (admin.clone(), kyc_id.clone(), compliance_id.clone(), m),
+    );
+}
+
+#[test]
+#[should_panic(expected = "verifier cannot be empty")]
+fn test_empty_verifier_rejected_in_update_meta() {
+    let h = setup();
+    let mut m = h.token.get_meta();
+    m.verifier = String::from_str(&h.env, "");
+    h.token.update_meta(&m);
+}
+
+// ── Issue #798: Reject empty beneficiary metadata ────────────────────────────
+
+#[test]
+#[should_panic(expected = "beneficiary memo cannot be empty")]
+fn test_empty_beneficiary_memo_rejected() {
+    let h = setup();
+    let alice = Address::generate(&h.env);
+    h.approve_kyc(&alice);
+    h.token.mint(&alice, &1000);
+
+    let bob = Address::generate(&h.env);
+    h.approve_kyc(&bob);
+
+    let mut reqs = soroban_sdk::Vec::new(&h.env);
+    reqs.push_back(RetirementRequest {
+        beneficiary: bob.clone(),
+        amount: 100,
+        memo: String::from_str(&h.env, ""),
+    });
+
+    h.token.batch_retire_on_behalf(&alice, &reqs);
+}
