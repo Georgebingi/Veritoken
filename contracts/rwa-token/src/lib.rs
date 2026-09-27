@@ -92,6 +92,8 @@ pub enum RwaError {
     NoPendingAdmin = 32,
     /// propose_admin was called with the current admin as successor.
     AlreadyAdmin = 33,
+    /// Token metadata contains an empty or blank required field.
+    InvalidMetadata = 34,
 }
 
 // ── Public types ──────────────────────────────────────────────────────────────

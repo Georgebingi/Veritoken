@@ -890,6 +890,7 @@ impl InvoiceToken {
     /// to prevent over-redemption after the transfer.
     pub fn transfer(env: Env, invoice_id: String, from: Address, to: Address, amount: i128) {
         env.storage().instance().extend_ttl(THRESHOLD, BUMP);
+        Self::validate_kyc_reference(&env, &invoice_id);
         from.require_auth();
 
         let status = Self::read_status(&env, &invoice_id);
@@ -914,16 +915,7 @@ impl InvoiceToken {
         if amount < 0 {
             panic_with_error!(env, InvoiceError::NegativeAmount);
         }
-        match th::evaluate_transfer_compliance(&env, &from, &to, amount) {
-            th::TransferDecision::Allow => {}
-            th::TransferDecision::Deny(ref reason) => {
-                if th::is_kyc_deny_reason(reason) {
-                    panic_with_error!(env, InvoiceError::KycNotApproved);
-                } else {
-                    panic_with_error!(env, InvoiceError::TransferBlocked);
-                }
-            }
-        }
+        Self::evaluate_transfer_kyc(&env, &from, &to, amount);
 
         // ── Fee deduction ────────────────────────────────────────────────
         // Compute fee: floor(amount * transfer_fee_bps / 10_000).
@@ -1046,6 +1038,7 @@ impl InvoiceToken {
         to: Address,
         amount: i128,
     ) {
+        Self::validate_kyc_reference(&env, &invoice_id);
         spender.require_auth();
 
         let status = Self::read_status(&env, &invoice_id);
@@ -1070,16 +1063,7 @@ impl InvoiceToken {
         if amount < 0 {
             panic_with_error!(env, InvoiceError::NegativeAmount);
         }
-        match th::evaluate_transfer_compliance(&env, &from, &to, amount) {
-            th::TransferDecision::Allow => {}
-            th::TransferDecision::Deny(ref reason) => {
-                if th::is_kyc_deny_reason(reason) {
-                    panic_with_error!(env, InvoiceError::KycNotApproved);
-                } else {
-                    panic_with_error!(env, InvoiceError::TransferBlocked);
-                }
-            }
-        }
+        Self::evaluate_transfer_kyc(&env, &from, &to, amount);
 
         let allowance =
             Self::read_allowance(&env, from.clone(), spender.clone(), invoice_id.clone());
@@ -1358,6 +1342,31 @@ impl InvoiceToken {
         // Fee is amount * bps / 10_000; above 100% the net transfer goes negative.
         if meta.transfer_fee_bps > 10_000 {
             panic_with_error!(env, InvoiceError::InvalidMetadata);
+        }
+    }
+
+    fn validate_kyc_reference(env: &Env, value: &String) {
+        let len = value.len() as usize;
+        if len == 0 {
+            panic_with_error!(env, InvoiceError::InvalidMetadata);
+        }
+        let mut buf = [0u8; 256];
+        value.copy_into_slice(&mut buf[..len]);
+        if buf[..len].iter().all(|b| b.is_ascii_whitespace()) {
+            panic_with_error!(env, InvoiceError::InvalidMetadata);
+        }
+    }
+
+    fn evaluate_transfer_kyc(env: &Env, from: &Address, to: &Address, amount: i128) {
+        match th::evaluate_transfer_compliance(env, from, to, amount) {
+            th::TransferDecision::Allow => {}
+            th::TransferDecision::Deny(ref reason) => {
+                if th::is_kyc_deny_reason(reason) {
+                    panic_with_error!(env, InvoiceError::KycNotApproved);
+                } else {
+                    panic_with_error!(env, InvoiceError::TransferBlocked);
+                }
+            }
         }
     }
 
