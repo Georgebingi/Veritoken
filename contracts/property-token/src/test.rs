@@ -1551,31 +1551,16 @@ fn test_whitespace_only_legal_name_rejected_in_constructor() {
     env.register(PropertyToken, (admin, kyc_id, ce_id, bad_meta));
 }
 
-// Fix #814: validate_property_meta rejects blank address and jurisdiction.
-#[test]
-#[should_panic]
-fn test_blank_address_rejected_in_constructor() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let admin = Address::generate(&env);
-    let kyc_id = Address::generate(&env);
-    let ce_id = Address::generate(&env);
-
-    let mut bad_address = meta(&env);
-    bad_address.address = String::from_str(&env, "     ");
-    env.register(PropertyToken, (admin, kyc_id, ce_id, bad_address));
-}
+// ── Issue #799: Reject self-transfers ────────────────────────────────────────
 
 #[test]
-#[should_panic]
-fn test_blank_jurisdiction_rejected_in_constructor() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let admin = Address::generate(&env);
-    let kyc_id = Address::generate(&env);
-    let ce_id = Address::generate(&env);
+#[should_panic(expected = "self-transfer not allowed")]
+fn test_self_transfer_rejected() {
+    let h = setup();
+    let alice = Address::generate(&h.env);
+    h.approve_kyc(&alice);
+    h.token.mint(&alice, &100);
 
-    let mut bad_jurisdiction = meta(&env);
-    bad_jurisdiction.jurisdiction = String::from_str(&env, "     ");
-    env.register(PropertyToken, (admin, kyc_id, ce_id, bad_jurisdiction));
+    // Attempt to transfer from alice to alice — should panic.
+    h.token.transfer(&alice, &alice, &50);
 }

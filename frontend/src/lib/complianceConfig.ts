@@ -57,11 +57,13 @@ export function exportConfig(
   riskConfig: RiskConfig | null,
   opts: { label?: string; network?: string } = {},
 ): ComplianceConfigExport {
+  const label = opts.label?.trim() || "Compliance config";
+  const network = opts.network?.trim() || "unknown";
   return {
     version: EXPORT_FORMAT_VERSION,
     exportedAt: new Date().toISOString(),
-    label: opts.label ?? "Compliance config",
-    network: opts.network ?? "unknown",
+    label,
+    network,
     rules: {
       max_transfer_amount: String(rules.max_transfer_amount),
       min_holding_period: String(rules.min_holding_period),

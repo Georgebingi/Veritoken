@@ -80,6 +80,8 @@ pub enum ComplianceError {
     /// string.  Every governance proposal must carry a human-readable reason
     /// so the policy audit trail remains meaningful.
     EmptyDescription = 13,
+    /// Holder timestamps must be positive Unix timestamps.
+    InvalidHolderSince = 14,
 }
 
 // ── Tier policy types ─────────────────────────────────────────────────────────
@@ -1111,6 +1113,29 @@ impl ComplianceEngine {
         env.storage()
             .persistent()
             .set(&key, &env.ledger().timestamp());
+        env.storage().persistent().extend_ttl(&key, THRESHOLD, BUMP);
+        if is_new {
+            let c: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::HolderCount)
+                .unwrap_or(0);
+            env.storage()
+                .instance()
+                .set(&DataKey::HolderCount, &(c + 1));
+        }
+    }
+
+    pub fn update_holder_since(env: Env, addr: Address, holder_since: i64) {
+        env.storage().instance().extend_ttl(THRESHOLD, BUMP);
+        if holder_since <= 0 {
+            panic_with_error!(env, ComplianceError::InvalidHolderSince);
+        }
+        let key = DataKey::HolderSince(addr.clone());
+        let is_new = !env.storage().persistent().has(&key);
+        env.storage()
+            .persistent()
+            .set(&key, &(holder_since as u64));
         env.storage().persistent().extend_ttl(&key, THRESHOLD, BUMP);
         if is_new {
             let c: u32 = env

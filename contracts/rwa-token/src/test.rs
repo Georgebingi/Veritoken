@@ -120,6 +120,60 @@ fn test_metadata() {
 }
 
 #[test]
+#[should_panic]
+fn test_constructor_rejects_blank_name() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let kyc_id = env.register(KycRegistry, ());
+    KycRegistryClient::new(&env, &kyc_id).initialize(&admin);
+    let compliance_id = env.register(ComplianceEngine, ());
+    ComplianceEngineClient::new(&env, &compliance_id).initialize(&admin, &kyc_id, &0u64);
+
+    env.register(
+        RwaToken,
+        (
+            admin,
+            7u32,
+            String::from_str(&env, "   "),
+            String::from_str(&env, "VTRWA"),
+            String::from_str(&env, "property"),
+            kyc_id,
+            compliance_id,
+            Option::<ComplianceMetadata>::None,
+            0i128,
+        ),
+    );
+}
+
+#[test]
+#[should_panic]
+fn test_constructor_rejects_blank_symbol() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let kyc_id = env.register(KycRegistry, ());
+    KycRegistryClient::new(&env, &kyc_id).initialize(&admin);
+    let compliance_id = env.register(ComplianceEngine, ());
+    ComplianceEngineClient::new(&env, &compliance_id).initialize(&admin, &kyc_id, &0u64);
+
+    env.register(
+        RwaToken,
+        (
+            admin,
+            7u32,
+            String::from_str(&env, "Veritoken RWA"),
+            String::from_str(&env, "   "),
+            String::from_str(&env, "property"),
+            kyc_id,
+            compliance_id,
+            Option::<ComplianceMetadata>::None,
+            0i128,
+        ),
+    );
+}
+
+#[test]
 fn test_mint_requires_kyc() {
     let h = setup();
     let user = Address::generate(&h.env);
@@ -2963,4 +3017,71 @@ fn test_constructor_accepts_valid_asset_type_after_empty_guard() {
             asset_type
         );
     }
+}
+
+// ── Regression: approve_recovery duplicate-guardian guard ────────────────────
+
+/// A guardian who has already approved the active proposal must not be able
+/// to approve a second time.  Without the guard, a single guardian could
+/// push the approval count above the threshold by calling approve_recovery
+/// multiple times, making the proposal appear stronger than it actually is.
+///
+/// This test pins the guard: a second call from the same guardian returns
+/// AlreadyApproved and the approval count remains unchanged.
+#[test]
+fn test_approve_recovery_duplicate_guardian_rejected() {
+    use crate::RwaError;
+    use soroban_sdk::Error;
+
+    let h = setup();
+    // 3-guardian, threshold-2 setup.
+    let members = make_guardians(&h, 3);
+    let g1 = members.get(0).unwrap();
+    let g2 = members.get(1).unwrap();
+    h.token.configure_recovery(&2, &members, &100);
+    h.token.propose_recovery(&g1, &Address::generate(&h.env));
+
+    // First approval from g2 succeeds.
+    h.token.approve_recovery(&g2);
+    let after_first = h.token.active_recovery().unwrap();
+    assert_eq!(after_first.approvals.len(), 1);
+
+    // Second approval from the same guardian must be rejected.
+    let res = h.token.try_approve_recovery(&g2);
+    assert_eq!(
+        res.unwrap_err().unwrap(),
+        Error::from(RwaError::AlreadyApproved),
+        "duplicate approval must return AlreadyApproved"
+    );
+
+    // Approval count must not have changed — threshold distortion is prevented.
+    let after_dup = h.token.active_recovery().unwrap();
+    assert_eq!(
+        after_dup.approvals.len(),
+        1,
+        "approval count must remain 1 after rejected duplicate"
+    );
+}
+
+/// Confirm the normal multi-guardian approval path is not affected: two
+/// distinct guardians each approve once and the count reaches 2.
+#[test]
+fn test_approve_recovery_two_distinct_guardians_both_count() {
+    let h = setup();
+    let members = make_guardians(&h, 3);
+    let g1 = members.get(0).unwrap();
+    let g2 = members.get(1).unwrap();
+    let g3 = members.get(2).unwrap();
+    h.token.configure_recovery(&2, &members, &100);
+    h.token.propose_recovery(&g1, &Address::generate(&h.env));
+
+    h.token.approve_recovery(&g2);
+    h.token.approve_recovery(&g3);
+
+    let proposal = h.token.active_recovery().unwrap();
+    assert_eq!(
+        proposal.approvals.len(),
+        2,
+        "two distinct approvals must both be recorded"
+    );
 }

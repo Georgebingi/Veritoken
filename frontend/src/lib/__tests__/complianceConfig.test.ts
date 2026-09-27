@@ -171,3 +171,37 @@ describe("applyComplianceConfig", () => {
     expect(result.riskConfigApplied).toBe(false);
   });
 });
+
+describe("exportConfig validation", () => {
+  it("rejects blank network values", () => {
+    const config = exportConfig(BASE_RULES, [], null, { label: "test", network: "" });
+    expect(config.network).toBe("unknown");
+  });
+
+  it("rejects whitespace-only network values", () => {
+    const config = exportConfig(BASE_RULES, [], null, { label: "test", network: "   " });
+    expect(config.network).toBe("unknown");
+  });
+
+  it("rejects blank label values", () => {
+    const config = exportConfig(BASE_RULES, [], null, { label: "", network: "testnet" });
+    expect(config.label).toBe("Compliance config");
+  });
+
+  it("rejects whitespace-only label values", () => {
+    const config = exportConfig(BASE_RULES, [], null, { label: "   ", network: "testnet" });
+    expect(config.label).toBe("Compliance config");
+  });
+
+  it("preserves valid label and network values", () => {
+    const config = exportConfig(BASE_RULES, [], null, { label: "My Config", network: "mainnet" });
+    expect(config.label).toBe("My Config");
+    expect(config.network).toBe("mainnet");
+  });
+
+  it("trims leading/trailing whitespace from valid values", () => {
+    const config = exportConfig(BASE_RULES, [], null, { label: "  My Config  ", network: "  testnet  " });
+    expect(config.label).toBe("My Config");
+    expect(config.network).toBe("testnet");
+  });
+});

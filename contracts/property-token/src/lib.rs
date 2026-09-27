@@ -415,6 +415,10 @@ impl PropertyToken {
     pub fn transfer(env: Env, from: Address, to: Address, shares: i128) {
         env.storage().instance().extend_ttl(THRESHOLD, BUMP);
         from.require_auth();
+        // Reject self-transfers to prevent accounting pollution.
+        if from == to {
+            panic!("self-transfer not allowed");
+        }
         match th::evaluate_transfer_compliance(&env, &from, &to, shares) {
             th::TransferDecision::Allow => {}
             th::TransferDecision::Deny(ref reason) => {
@@ -796,7 +800,7 @@ impl PropertyToken {
         let mut checkpoint = Self::settle_holder(&env, holder.clone());
         let amount = checkpoint.unclaimed_total;
         if amount <= 0 {
-            return 0;
+            panic_with_error!(env, PropertyError::InvalidDividendAmount);
         }
         checkpoint.unclaimed_total = 0;
         checkpoint.unclaimed_rent = 0;

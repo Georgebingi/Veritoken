@@ -150,6 +150,22 @@ fn test_transfer_before_due_date() {
 }
 
 #[test]
+fn test_transfer_rejects_blank_kyc_reference() {
+    let h = setup();
+    let alice = Address::generate(&h.env);
+    let bob = Address::generate(&h.env);
+    h.approve_kyc(&alice);
+    h.approve_kyc(&bob);
+    h.token.issue(&inv_id(&h.env), &alice, &1_000);
+
+    assert_eq!(
+        h.token
+            .try_transfer(&String::from_str(&h.env, "   "), &alice, &bob, &100),
+        Err(Ok(InvoiceError::InvalidMetadata.into()))
+    );
+}
+
+#[test]
 fn test_transfer_blocked_after_due_date() {
     let h = setup();
     let alice = Address::generate(&h.env);
