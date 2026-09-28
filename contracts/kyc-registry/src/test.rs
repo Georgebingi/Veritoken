@@ -2155,3 +2155,25 @@ fn test_remove_admin_rejects_last_admin_removal() {
         "the surviving admin must be unchanged"
     );
 }
+
+#[test]
+fn test_verifier_log_rejects_duplicate_subject_entry() {
+    let (env, client, admin) = setup();
+    let verifier = Address::generate(&env);
+    let subject = Address::generate(&env);
+    client.add_verifier(&admin, &verifier);
+
+    client.approve(&verifier, &subject, &1, &0, &js(&env, "US"));
+    let contract_id = client.address.clone();
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .set(&DataKey::SubjectVerifierLogCount(subject.clone()), &0u32);
+    });
+
+    assert_eq!(
+        client.try_revoke(&verifier, &subject),
+        Err(Ok(Error::from(KycError::DuplicateHistoryEntry)))
+    );
+    assert_eq!(client.verifier_log_count(), 1);
+}

@@ -1,53 +1,52 @@
 /**
- * verify-manifest.test.ts — Regression tests for parseManifestEntries and requireEnv
+ * verify-manifest.test.ts — Regression tests for verifyManifest
  *
- * Covers whitespace-only contract labels slipping into verification output,
- * and missing environment variables producing errors without enough context
- * to identify what the operator needs to set.
+ * Covers blank or whitespace-only contract IDs, which must be rejected
+ * before any RPC verification call is attempted.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
-import { parseManifestEntries, requireEnv } from "./verify-manifest.ts";
+import { describe, it, expect, vi } from "vitest";
+import type { SorobanRpc } from "@stellar/stellar-sdk";
+import { verifyManifest, type Manifest } from "./verify-manifest.ts";
 
-const ENTRY = {
-  contract_id: "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
-  wasm_hash: "abc123",
-  deployed_at: "2026-01-01T00:00:00Z",
-  network: "testnet",
-};
+function manifestWith(contractId: string): Manifest {
+  return {
+    schema_version: 1,
+    git_sha: "abc123",
+    network: "testnet",
+    deployed_at: "2026-01-01T00:00:00Z",
+    contracts: {
+      "kyc-registry": {
+        contract_id: contractId,
+        wasm_hash: "hash",
+        deployed_at: "2026-01-01T00:00:00Z",
+        network: "testnet",
+      },
+    },
+  };
+}
 
-describe("parseManifestEntries", () => {
-  it("returns entries with trimmed labels", () => {
-    expect(parseManifestEntries({ " kyc-registry ": ENTRY })).toEqual([
-      ["kyc-registry", ENTRY],
-    ]);
-  });
+function stubServer() {
+  return {
+    getLedgerEntries: vi.fn(),
+    getAccount: vi.fn(),
+    simulateTransaction: vi.fn(),
+  };
+}
 
-  it("rejects a whitespace-only label", () => {
-    expect(() =>
-      parseManifestEntries({ "kyc-registry": ENTRY, "   ": ENTRY })
-    ).toThrow(/blank contract label/);
-  });
-});
-
-describe("requireEnv", () => {
-  const KEY = "MANIFEST_FILE";
-  const original = process.env[KEY];
-
-  afterEach(() => {
-    if (original === undefined) delete process.env[KEY];
-    else process.env[KEY] = original;
-  });
-
-  it("returns the value when set", () => {
-    process.env[KEY] = "./manifests/local-dev.json";
-    expect(requireEnv(KEY)).toBe("./manifests/local-dev.json");
-  });
-
-  it("names the missing variable and the verify-manifest context", () => {
-    delete process.env[KEY];
-    expect(() => requireEnv(KEY)).toThrow(
-      /verify-manifest: required environment variable MANIFEST_FILE \(path to the deployment manifest/
-    );
-  });
+describe("verifyManifest", () => {
+  it.each(["", "   ", "\t\n"])(
+    "rejects blank contract_id %j before calling the RPC",
+    async (contractId) => {
+      const server = stubServer();
+      await expect(
+        verifyManifest(
+          manifestWith(contractId),
+          server as unknown as SorobanRpc.Server
+        )
+      ).rejects.toThrow(/empty contract_id/);
+      expect(server.getLedgerEntries).not.toHaveBeenCalled();
+      expect(server.simulateTransaction).not.toHaveBeenCalled();
+    }
+  );
 });

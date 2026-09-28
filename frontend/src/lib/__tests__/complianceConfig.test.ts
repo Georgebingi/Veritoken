@@ -71,6 +71,13 @@ describe("exportConfig / configToRules round-trip", () => {
     }
   });
 
+  it("rejects malformed decimal strings before BigInt conversion", () => {
+    const exported = exportConfig(BASE_RULES, [], null, { label: "test", network: "testnet" });
+    exported.rules.max_transfer_amount = "not-a-number";
+
+    expect(() => configToRules(exported)).toThrow(/max_transfer_amount/);
+  });
+
   it("configToTierPolicies restores bigint amounts", () => {
     const exported = exportConfig(
       BASE_RULES,

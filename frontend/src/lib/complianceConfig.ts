@@ -187,6 +187,16 @@ function tierPolicyEntryError(entry: unknown): string | null {
 /** Convert a parsed export back to typed domain objects ready for the UI. */
 export function configToRules(config: ComplianceConfigExport): ComplianceRules {
   const r = config.rules;
+  const decimalFields = [
+    ["max_transfer_amount", r.max_transfer_amount],
+    ["min_holding_period", r.min_holding_period],
+    ["max_holding_period", r.max_holding_period],
+  ] as const;
+  for (const [field, value] of decimalFields) {
+    if (!/^\d+$/.test(value)) {
+      throw new Error(`Invalid rules field "${field}": expected a non-negative decimal string.`);
+    }
+  }
   return {
     max_transfer_amount: BigInt(r.max_transfer_amount),
     min_holding_period: BigInt(r.min_holding_period),

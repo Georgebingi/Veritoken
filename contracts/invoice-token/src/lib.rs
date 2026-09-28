@@ -221,6 +221,9 @@ impl InvoiceToken {
         if th::get_kyc_state_of(&env, &addr) != th::KycState::Approved {
             panic_with_error!(env, InvoiceError::KycNotApproved);
         }
+        if !Self::has_positive_transfer_fee(&env) {
+            panic_with_error!(env, InvoiceError::InvalidMetadata);
+        }
         // Verify the address passes a self-to-self compliance check (catches blocklist/pause).
         match th::evaluate_transfer_compliance(&env, &addr, &addr, 0) {
             th::TransferDecision::Allow => {}
@@ -1359,6 +1362,26 @@ impl InvoiceToken {
         if meta.transfer_fee_bps > 10_000 {
             panic_with_error!(env, InvoiceError::InvalidMetadata);
         }
+    }
+
+    fn has_positive_transfer_fee(env: &Env) -> bool {
+        let list: Vec<String> = env
+            .storage()
+            .instance()
+            .get(&DataKey::InvoicesList)
+            .unwrap_or_else(|| Vec::new(env));
+        for invoice_id in list {
+            if let Some(meta) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, InvoiceMeta>(&DataKey::InvoiceMeta(invoice_id))
+            {
+                if meta.transfer_fee_bps > 0 {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     fn validate_kyc_reference(env: &Env, value: &String) {
