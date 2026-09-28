@@ -1199,6 +1199,18 @@ impl KycRegistry {
             timestamp: env.ledger().timestamp(),
         };
 
+        // Reject before any write if the next per-subject slot is already
+        // occupied, so a stale counter can never overwrite or duplicate history.
+        let scount_key = DataKey::SubjectVerifierLogCount(subject.clone());
+        let scount: u32 = env.storage().persistent().get(&scount_key).unwrap_or(0);
+        let skey = DataKey::SubjectVerifierLog(SubjectLogKey {
+            subject: subject.clone(),
+            seq: scount,
+        });
+        if env.storage().persistent().has(&skey) {
+            panic_with_error!(env, KycError::DuplicateHistoryEntry);
+        }
+
         // Global log (unchanged, required by revoke_all_by_verifier).
         let count: u32 = env
             .storage()
@@ -1215,12 +1227,6 @@ impl KycRegistry {
             .set(&DataKey::VerifierLogCount, &(count + 1));
 
         // Per-subject log — O(1) append.
-        let scount_key = DataKey::SubjectVerifierLogCount(subject.clone());
-        let scount: u32 = env.storage().persistent().get(&scount_key).unwrap_or(0);
-        let skey = DataKey::SubjectVerifierLog(SubjectLogKey {
-            subject: subject.clone(),
-            seq: scount,
-        });
         env.storage().persistent().set(&skey, &entry);
         env.storage()
             .persistent()

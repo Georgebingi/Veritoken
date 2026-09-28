@@ -229,6 +229,7 @@ impl PropertyToken {
     }
 
     fn validate_property_meta(env: &Env, meta: &PropertyMeta) {
+        Self::require_non_blank(env, &meta.property_id);
         if !th::is_valid_legal_entity(&meta.legal_name) {
             panic_with_error!(env, PropertyError::InvalidMetadata);
         }
