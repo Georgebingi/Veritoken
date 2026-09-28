@@ -47,6 +47,17 @@ describe("createClients", () => {
     expect(clients.rwaToken).toBe(fakeRwa);
   });
 
+  it("rejects blank contract IDs in contractIds and overrides", () => {
+    const server = mockServer();
+    expect(() => createClients({ server, contractIds: { kycRegistry: "   " } })).toThrow(
+      /contractIds\.kycRegistry is blank/,
+    );
+    const blankOverride = { contractId: "" } as unknown as RwaTokenClient;
+    expect(() => createClients({ server, contractIds: {}, overrides: { rwaToken: blankOverride } })).toThrow(
+      /overrides\.rwaToken has a blank contractId/,
+    );
+  });
+
   it("respects an explicit networkPassphrase override", () => {
     const server = mockServer();
     const clients = createClients({

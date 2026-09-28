@@ -1437,6 +1437,41 @@ fn test_set_tier_policy_rejects_negative_max_transfer_amount() {
 }
 
 #[test]
+fn test_set_tier_policy_rejects_invalid_min_tiers() {
+    let (_, ce, _) = setup();
+
+    assert_eq!(
+        ce.try_set_tier_policy(
+            &0u32,
+            &1u32,
+            &TierPolicy {
+                blocked: false,
+                max_transfer_amount: 0,
+                min_from_tier: 101,
+                min_to_tier: 0,
+            }
+        ),
+        Err(Ok(Error::from(ComplianceError::InvalidTierPolicy)))
+    );
+    assert!(ce.get_tier_policy(&0u32, &1u32).is_none());
+
+    assert_eq!(
+        ce.try_set_tier_policy(
+            &0u32,
+            &1u32,
+            &TierPolicy {
+                blocked: false,
+                max_transfer_amount: 0,
+                min_from_tier: 0,
+                min_to_tier: 101,
+            }
+        ),
+        Err(Ok(Error::from(ComplianceError::InvalidTierPolicy)))
+    );
+    assert_eq!(ce.tier_policy_count(), 0);
+}
+
+#[test]
 fn test_policy_records_normalize_empty_descriptions() {
     let (env, ce, _) = setup();
     ce.set_rules(&rules(42, 0, 0, false));

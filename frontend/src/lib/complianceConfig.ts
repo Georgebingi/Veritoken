@@ -157,43 +157,46 @@ export function parseConfigJson(json: string): ImportResult {
     }
   }
 
-  const isInt = (v: unknown): boolean => typeof v === "number" && Number.isInteger(v);
   for (let i = 0; i < obj.tierPolicies.length; i++) {
-    const entry = obj.tierPolicies[i] as Record<string, unknown> | null;
-    const where = `tierPolicies[${i}]`;
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      return { ok: false, error: `Invalid ${where}: expected an object.` };
-    }
-    if (!isInt(entry.fromTier)) {
-      return { ok: false, error: `Invalid ${where}.fromTier: expected an integer.` };
-    }
-    if (!isInt(entry.toTier)) {
-      return { ok: false, error: `Invalid ${where}.toTier: expected an integer.` };
-    }
-    const policy = entry.policy as Record<string, unknown> | null;
-    if (typeof policy !== "object" || policy === null || Array.isArray(policy)) {
-      return { ok: false, error: `Invalid ${where}.policy: expected an object.` };
-    }
-    if (typeof policy.blocked !== "boolean") {
-      return { ok: false, error: `Invalid ${where}.policy.blocked: expected a boolean.` };
-    }
-    if (typeof policy.max_transfer_amount !== "string" || !/^-?\d+$/.test(policy.max_transfer_amount)) {
-      return { ok: false, error: `Invalid ${where}.policy.max_transfer_amount: expected a decimal string.` };
-    }
-    if (!isInt(policy.min_from_tier)) {
-      return { ok: false, error: `Invalid ${where}.policy.min_from_tier: expected an integer.` };
-    }
-    if (!isInt(policy.min_to_tier)) {
-      return { ok: false, error: `Invalid ${where}.policy.min_to_tier: expected an integer.` };
+    const error = tierPolicyEntryError(obj.tierPolicies[i]);
+    if (error) {
+      return { ok: false, error: `Invalid tierPolicies[${i}]: ${error}` };
     }
   }
 
   return { ok: true, config: raw as ComplianceConfigExport };
 }
 
+/** Returns a reason the entry is structurally malformed, or null if it is well-formed. */
+function tierPolicyEntryError(entry: unknown): string | null {
+  if (typeof entry !== "object" || entry === null) return "expected an object.";
+  const e = entry as Record<string, unknown>;
+  if (!Number.isInteger(e.fromTier)) return '"fromTier" must be an integer.';
+  if (!Number.isInteger(e.toTier)) return '"toTier" must be an integer.';
+  if (typeof e.policy !== "object" || e.policy === null) return 'missing or invalid "policy".';
+  const p = e.policy as Record<string, unknown>;
+  if (typeof p.blocked !== "boolean") return '"policy.blocked" must be a boolean.';
+  if (typeof p.max_transfer_amount !== "string" || !/^-?\d+$/.test(p.max_transfer_amount)) {
+    return '"policy.max_transfer_amount" must be a decimal string.';
+  }
+  if (!Number.isInteger(p.min_from_tier)) return '"policy.min_from_tier" must be an integer.';
+  if (!Number.isInteger(p.min_to_tier)) return '"policy.min_to_tier" must be an integer.';
+  return null;
+}
+
 /** Convert a parsed export back to typed domain objects ready for the UI. */
 export function configToRules(config: ComplianceConfigExport): ComplianceRules {
   const r = config.rules;
+  const decimalFields = [
+    ["max_transfer_amount", r.max_transfer_amount],
+    ["min_holding_period", r.min_holding_period],
+    ["max_holding_period", r.max_holding_period],
+  ] as const;
+  for (const [field, value] of decimalFields) {
+    if (!/^\d+$/.test(value)) {
+      throw new Error(`Invalid rules field "${field}": expected a non-negative decimal string.`);
+    }
+  }
   return {
     max_transfer_amount: BigInt(r.max_transfer_amount),
     min_holding_period: BigInt(r.min_holding_period),
