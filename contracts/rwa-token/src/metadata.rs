@@ -74,6 +74,7 @@ fn is_blank(value: &String) -> bool {
     }
 
     let mut buf = [0u8; 256];
-    value.copy_into_slice(&mut buf[..len]);
-    buf[..len].iter().all(|b| b.is_ascii_whitespace())
+    let slice_len = len.min(256);
+    value.copy_into_slice(&mut buf[..slice_len]);
+    buf[..slice_len].iter().all(|b| b.is_ascii_whitespace())
 }
