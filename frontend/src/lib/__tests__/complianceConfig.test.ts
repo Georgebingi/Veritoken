@@ -90,6 +90,17 @@ describe("exportConfig / configToRules round-trip", () => {
       { fromTier: 0, toTier: 2, policy: { blocked: true, max_transfer_amount: 1000n, min_from_tier: 0, min_to_tier: 0 } },
     ]);
   });
+
+  it("parseConfigJson rejects a malformed tierPolicies entry", () => {
+    const exported = exportConfig(BASE_RULES, [], null, { label: "test", network: "testnet" });
+    const json = JSON.stringify({
+      ...exported,
+      tierPolicies: [{ fromTier: 0, toTier: 2, policy: { blocked: "yes", max_transfer_amount: 1000 } }],
+    });
+    const result = parseConfigJson(json);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/tierPolicies\[0\]/);
+  });
 });
 
 describe("validateConfigForApply", () => {

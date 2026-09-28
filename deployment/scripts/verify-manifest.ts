@@ -38,10 +38,19 @@ const NETWORK_PASSPHRASE =
 // For simulation we use a random keypair — no signing needed
 const SIM_KEYPAIR = Keypair.random();
 
-function requireEnv(key: string): string {
+const ENV_DESCRIPTIONS: Record<string, string> = {
+  MANIFEST_FILE: "path to the deployment manifest JSON file to verify",
+  STELLAR_RPC_URL: "Soroban RPC endpoint used to query the deployed contracts",
+};
+
+export function requireEnv(key: string): string {
   const value = process.env[key];
-  if (!value) {
-    throw new Error(`Required environment variable ${key} is not set.`);
+  if (!value || value.trim() === "") {
+    const purpose = ENV_DESCRIPTIONS[key] ? ` (${ENV_DESCRIPTIONS[key]})` : "";
+    throw new Error(
+      `verify-manifest: required environment variable ${key}${purpose} is not set or is empty. ` +
+        `Set ${key} before running manifest verification.`
+    );
   }
   return value;
 }
@@ -59,6 +68,25 @@ export interface Manifest {
   network: string;
   deployed_at: string;
   contracts: Record<string, ManifestEntry>;
+}
+
+/**
+ * Returns the manifest's contract entries with labels trimmed, rejecting
+ * blank or whitespace-only labels so malformed manifests fail loudly
+ * instead of producing unreadable verification output.
+ */
+export function parseManifestEntries(
+  contracts: Record<string, ManifestEntry>
+): Array<[string, ManifestEntry]> {
+  return Object.entries(contracts).map(([rawLabel, entry]) => {
+    const label = rawLabel.trim();
+    if (label === "") {
+      throw new Error(
+        `Manifest contains a blank contract label ${JSON.stringify(rawLabel)} — every contract entry must have a non-empty name.`
+      );
+    }
+    return [label, entry];
+  });
 }
 
 async function callName(
@@ -157,7 +185,7 @@ export async function verifyManifest(
 
   let allPassed = true;
 
-  for (const [name, entry] of Object.entries(manifest.contracts)) {
+  for (const [name, entry] of entries) {
     process.stdout.write(`  Verifying ${name} (${entry.contract_id}) ... `);
 
     const exists = await contractExists(server, entry.contract_id);
