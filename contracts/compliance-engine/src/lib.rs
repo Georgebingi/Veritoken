@@ -82,6 +82,7 @@ pub enum ComplianceError {
     EmptyDescription = 13,
     /// Holder timestamps must be positive Unix timestamps.
     InvalidHolderSince = 14,
+    InvalidTierPolicy = 15,
 }
 
 // ── Tier policy types ─────────────────────────────────────────────────────────
@@ -1285,6 +1286,9 @@ impl ComplianceEngine {
         // effectively disabling the cap in a misleading way.
         if policy.max_transfer_amount < 0 {
             panic_with_error!(env, ComplianceError::NegativeTierTransferAmount);
+        }
+        if policy.min_from_tier > 100 || policy.min_to_tier > 100 {
+            panic_with_error!(env, ComplianceError::InvalidTierPolicy);
         }
         env.storage().instance().extend_ttl(THRESHOLD, BUMP);
         let key = DataKey::TierPolicy(TierPolicyKey { from_tier, to_tier });

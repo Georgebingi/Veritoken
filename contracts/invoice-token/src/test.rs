@@ -1524,6 +1524,8 @@ fn test_set_fee_recipient_rejects_blocklisted_addr() {
     let h = setup();
     let bad_addr = Address::generate(&h.env);
     h.approve_kyc(&bad_addr);
+    h.token
+        .create_invoice(&make_fee_invoice(&h.env, "FEE-ROLE-BLOCK", None));
     h.compliance.add_to_blocklist(&bad_addr);
 
     // set_fee_recipient must reject a blocklisted address.
@@ -1543,9 +1545,24 @@ fn test_set_fee_recipient_stores_valid_addr() {
     let h = setup();
     let addr = Address::generate(&h.env);
     h.approve_kyc(&addr);
+    h.token
+        .create_invoice(&make_fee_invoice(&h.env, "FEE-ROLE-OK", None));
 
     h.token.set_fee_recipient(&addr);
     assert_eq!(h.token.get_fee_recipient_role(), Some(addr));
+}
+
+#[test]
+fn test_set_fee_recipient_rejects_zero_fee_schedule() {
+    let h = setup();
+    let addr = Address::generate(&h.env);
+    h.approve_kyc(&addr);
+
+    assert_eq!(
+        h.token.try_set_fee_recipient(&addr),
+        Err(Ok(InvoiceError::InvalidMetadata.into()))
+    );
+    assert_eq!(h.token.get_fee_recipient_role(), None);
 }
 
 // ── Redemption arithmetic tests ───────────────────────────────────────────────
