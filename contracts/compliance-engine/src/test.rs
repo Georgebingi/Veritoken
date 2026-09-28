@@ -336,6 +336,24 @@ fn test_set_rules_increments_policy_version() {
 }
 
 #[test]
+fn test_identical_policy_writes_are_collapsed() {
+    let (_, ce, _) = setup();
+    ce.set_rules(&rules(100, 0, 0, false));
+    ce.set_rules(&rules(100, 0, 0, false));
+    ce.pause();
+    ce.pause();
+    // init + one rule update + one pause; the repeats add no records.
+    assert_eq!(ce.policy_version_count(), 3);
+    assert_eq!(
+        ce.get_current_policy_version().change_kind,
+        PolicyChangeKind::Pause
+    );
+    // A different state transition is still recorded.
+    ce.set_rules(&rules(200, 0, 0, false));
+    assert_eq!(ce.policy_version_count(), 4);
+}
+
+#[test]
 fn test_delayed_activation_creates_delayed_version_kind() {
     let (env, ce, _) = setup();
     ce.propose_rules(&rules(777, 0, 0, false), &String::from_str(&env, "desc"));

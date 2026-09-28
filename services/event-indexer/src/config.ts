@@ -68,7 +68,10 @@ export function loadConfig(): IndexerConfig {
   const rawRpcUrl = process.env.RPC_URL ?? process.env.STELLAR_RPC_URL;
   const rpcUrl    = rawRpcUrl?.trim() ?? "";
   if (!rpcUrl) {
-    throw new Error("RPC_URL environment variable is required");
+    throw new Error(
+      "RPC_URL environment variable is required " +
+        "(checked RPC_URL, STELLAR_RPC_URL; both are unset or blank)"
+    );
   }
 
   const rawPassphrase = process.env.NETWORK_PASSPHRASE ?? process.env.STELLAR_NETWORK_PASSPHRASE;
